@@ -1,0 +1,23 @@
+# RetouchLab 生成式组件（可选）
+#
+# 只有需要「生成式」分组下的三个工具时才装：
+#   AI 布景 / 创成式填充 / 道具修复
+#
+# 安装：
+#   python -m pip install -r requirements-generative.txt
+#
+# 注意：
+#   1. 会拉入 PyTorch，体积约 4GB。
+#   2. 还需要在外部运行 ComfyUI（默认 http://127.0.0.1:8388），
+#      并放入 SD1.5 inpainting 模型 + ControlNet inpainting 模型。
+#      详见 README 的「生成式三件套」一节。
+#   3. 通过环境变量可改 ComfyUI 地址：
+#        set RETOUCHLAB_COMFYUI=http://127.0.0.1:8388
+#
+# 未安装本文件、或 ComfyUI 未运行时，其余全部功能不受影响，
+# /api/health 的 generative_fill 会返回 false。
+
+torch==2.11.0
+torchvision==0.26.0
+transformers==5.17.0
+huggingface_hub==1.27.0

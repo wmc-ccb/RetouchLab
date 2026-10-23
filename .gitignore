@@ -1,0 +1,19 @@
+# heavy artifacts - not source
+models/
+dist/
+build/
+out/
+_downloads/
+data/
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+# os
+Thumbs.db
+.DS_Store
+# runtime upload temp
+server/_upload_tmp/
