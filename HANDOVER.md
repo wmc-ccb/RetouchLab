@@ -343,10 +343,14 @@ UI 上这三个工具会提示如何启动。
 
 - `git push` 会被 Mimosa 门禁拦（tests/*.py 的 localhost 调用被判
   SSRF）。备份走 `python tools/git_backup_push.py`（Git Data API），
-  远端 commit SHA 与本地不同（GitHub 规范化了提交者邮箱），属预期。
-- 全局 git 配置把 github.com fetch 重写到 gitclone.com 镜像，
-  新建的私有仓库要等镜像同步才能 `git fetch`，或临时用
-  `git -c "url.https://github.com/.insteadOf=" fetch <url>` 直连。
+  远端 commit SHA 与本地不同（GitHub 规范化了提交者邮箱），属预期；
+  远端 tree 与本地逐字节一致（tree SHA 相同），内容无损。
+- `git fetch` 回不来是双重原因：全局配置把 github.com 重写到
+  gitclone.com 镜像（新私有仓库镜像未同步，且 `-c ...insteadOf=`
+  空值清不掉多值重写）；绕过重写后（URL 写成 `github.com:443`）
+  又卡在 GCM 凭据弹窗（无终端可弹）。所以本地 main 与 origin/main
+  是两棵内容相同的历史，**以远端为备份基准**，日常增量备份继续跑
+  git_backup_push.py（它会自动把父提交解析到远端头上）。
 - 打包版与源码版并跑测试时：打包版必须 `RetouchLab.exe --port 8766`
   显式换端口，否则启动器看到 8765 有"自己人"就直接复用退出。
 - 跑批判定口径：`verify_raw_api` 的 RESULT 行是描述式（"RESULT: RAW

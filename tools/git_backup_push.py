@@ -129,10 +129,25 @@ def main():
             }
     parents = [l.split(" ", 1)[1] for l in header.splitlines()
                if l.startswith("parent ")]
+    # 本地父提交在远端可能不存在（远端是 API 创建的等价提交，SHA 不同：
+    # GitHub 会把提交者邮箱规范化）。缺谁就用远端分支头补位——
+    # 备份要的是内容和线性历史，不是 SHA 逐位复刻。
+    remote_head = None
+    if ref_exists:
+        remote_head = json.loads(probe.stdout.decode("utf-8"))["object"]["sha"]
+    known = {remote_head} if remote_head else set()
+    resolved = []
+    for p in parents:
+        if p in known or subprocess.run(
+                ["gh", "api", "repos/%s/git/commits/%s" % (owner_repo, p)],
+                capture_output=True).returncode == 0:
+            resolved.append(p)
+    if not resolved and remote_head:
+        resolved = [remote_head]
     commit = gh_api("POST", "repos/%s/git/commits" % owner_repo, {
         "message": message,
         "tree": new_tree["sha"],
-        "parents": parents,
+        "parents": resolved,
         "author": meta.get("author"),
         "committer": meta.get("committer"),
     })
