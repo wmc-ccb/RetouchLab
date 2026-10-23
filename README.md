@@ -1134,9 +1134,41 @@ Lanczos4 在整数偏移处是精确恒等，所以：
   是模型边界而非实现 bug）
 - **姿态估计只对可见身体有效**，头肩像退回画面几何
 - **RAW 相机档案未接**：色彩矩阵用 LibRaw 内置的，没有逐机型标定数据
-- **生成式功能没有**：填充/扩图需要生成模型，超出本轮范围
+- **生成式三件套是可选组件**：需要外挂 ComfyUI + 13GB 模型，
+  见 `GENERATIVE.md`（`tools/install_generative.py` 一键安装）
 - **降噪模型只在合成噪声上训练**：真实高 ISO 的噪声结构更复杂（行噪声、
   量化耦合），下一步应引入真实噪声对（暗场帧）
+- **无代码签名时 SmartScreen 会警告**：见下面「发布」章节
+
+## 发布（发版流程）
+
+1. 改版本号：`server/app.py` 里的 `APP_VERSION`（唯一来源；
+   exe 属性、`/api/version`、关于面板都跟着它走）。
+2. 打包：`build_app.bat`（PyInstaller + assemble_dist）。
+   产物带 `build-stamp.txt`（构建日期），随包附 `install_generative.py`
+   与生成式安装指南。
+3. 代码签名（发行给外部用户时强烈建议，否则 SmartScreen 弹"未知发布者"）：
+
+   ```powershell
+   $env:RETOUCHLAB_CERT_PFX = "D:\certs\mycode.pfx"   # 代码签名证书
+   $env:RETOUCHLAB_CERT_PASS = "..."                  # 证书密码
+   python tools\assemble_dist.py                      # 自动调 signtool
+   ```
+
+   证书类型取舍（2026 年行情）：
+   - **OV 代码签名证书**（几百元/年）：防篡改，但 SmartScreen 仍要
+     「积累信誉」，初期照样警告。
+   - **EV 代码签名证书**（硬件 USB Token，几千元/年）：SmartScreen
+     立即信任，个人开发者最省心的选择。
+   - **自签证书**（`New-SelfSignedCertificate`）：只适合内网/自用，
+     对外部用户毫无帮助，还会叠一层"未知发布者"。
+   - 没有证书时 assemble_dist 会跳过签名并提示，本地打包不受影响。
+4. 更新检查：`/api/version` 返回 `update_url`（GitHub Releases 的
+   latest 接口），前端关于面板据此提示新版本。**仓库需要公开**（或把
+   `update_url` 换成你的分发地址）检查才会生效；仓库不可达时静默降级。
+5. 崩溃上报：发行版的排障入口是「关于 → 复制诊断报告」，把版本、
+   GPU 实测（`/api/diagnose`）、最近 5 条异常（`/api/errors`，来自
+   `out/error.log`）一次复制给维护者。
 
 ## 许可与用途
 

@@ -101,6 +101,36 @@ a = Analysis(                                  # noqa: F821
 
 pyz = PYZ(a.pure)                              # noqa: F821
 
+# ---- 版本资源：右键 exe → 属性 → 详细信息 能看到的那些字段 ----
+# 版本号唯一来源是 server/app.py 的 APP_VERSION，这里构建时提取，
+# 避免"exe 属性 1.0.0 / 关于面板 1.1.0"两处对不上。
+import re as _re
+
+with open(os.path.join(HERE, "server", "app.py"), encoding="utf-8") as _f:
+    _ver = _re.search(r'APP_VERSION = "([^"]+)"', _f.read()).group(1)
+_ver_quads = (_ver.split("-")[0].split(".") + ["0", "0", "0"])[:4]
+_vi_file = os.path.join(HERE, "build", "version_info.txt")
+os.makedirs(os.path.dirname(_vi_file), exist_ok=True)
+with open(_vi_file, "w", encoding="utf-8") as _f:
+    _f.write("""# UTF-8
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=({q}),
+    prodvers=({q}),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)
+  ),
+  kids=[StringFileInfo([StringTable('080404b0', [
+    StringStruct('CompanyName', 'RetouchLab'),
+    StringStruct('FileDescription', 'RetouchLab 人像精修引擎'),
+    StringStruct('FileVersion', '{v}'),
+    StringStruct('ProductName', 'RetouchLab'),
+    StringStruct('ProductVersion', '{v}'),
+  ])]), VarFileInfo([VarStruct('Translation', [2052, 1200])])]
+)
+""".format(q=", ".join(_ver_quads), v=_ver))
+
 exe = EXE(                                     # noqa: F821
     pyz,
     a.scripts,
@@ -118,6 +148,7 @@ exe = EXE(                                     # noqa: F821
     codesign_identity=None,
     entitlements_file=None,
     icon=None,
+    version=_vi_file,
 )
 
 coll = COLLECT(                                # noqa: F821

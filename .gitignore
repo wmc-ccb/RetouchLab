@@ -17,3 +17,5 @@ Thumbs.db
 .DS_Store
 # runtime upload temp
 server/_upload_tmp/
+# mimosa scanner runtime state
+.mimosa/

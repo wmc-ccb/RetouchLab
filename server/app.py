@@ -61,7 +61,34 @@ DATA_DIR = _data_dir()
 MAX_SESSIONS = 8
 PREVIEW_LONG_EDGE = 1400
 
-app = FastAPI(title="RetouchLab", version="1.0.0")
+# ---- 版本标识 -----------------------------------------------------------
+# 发布流程（tools/assemble_dist.py 与 README「发布」章节）以这里为准。
+# VERSION 每次发版手动改；BUILD 优先级：环境变量 > exe 旁的 build-stamp.txt
+# （打包时写入，形如 2026-10-24.1）> dev（源码运行）。
+APP_VERSION = "1.1.0"
+
+
+def _read_build() -> str:
+    if os.environ.get("RETOUCHLAB_BUILD"):
+        return os.environ["RETOUCHLAB_BUILD"]
+    try:
+        # build-stamp.txt 由 assemble_dist 写在 exe 旁（源码运行时在
+        # server/ 旁边），不向上跳：assemble 放的就是同级目录。
+        base = (os.path.dirname(sys.executable)
+                if getattr(sys, "frozen", False)
+                else os.path.dirname(os.path.dirname(__file__)))
+        stamp = os.path.join(base, "build-stamp.txt")
+        if os.path.isfile(stamp):
+            with open(stamp, encoding="utf-8") as f:
+                return f.read().strip()[:40]
+    except Exception:
+        pass
+    return "dev"
+
+
+APP_BUILD = _read_build()
+
+app = FastAPI(title="RetouchLab", version=APP_VERSION)
 
 # ---- 访问口令（公网隧道必须开）
 # 环境变量 RETOUCHLAB_PASSWD 设置后，所有请求都要带凭证
@@ -157,12 +184,29 @@ async def _unhandled(request, exc):
         from engine.paths import out_dir
 
         os.makedirs(out_dir(), exist_ok=True)
-        with open(os.path.join(out_dir(), "error.log"), "a",
-                  encoding="utf-8") as f:
+        path = os.path.join(out_dir(), "error.log")
+        # 轮转：长跑的实例（联机拍摄一挂几天）会让日志无限涨，
+        # /api/errors 要全文解析，超大会拖慢排障端点。超 2MB 砍掉前半。
+        try:
+            if os.path.exists(path) and os.path.getsize(path) > 2 * 1024 * 1024:
+                with open(path, "rb") as f:
+                    tail = f.read()[1024 * 1024:]
+                cut = tail.find(b"\n==== ")
+                with open(path, "wb") as f:
+                    f.write(tail[cut + 1:] if cut >= 0 else tail)
+        except Exception:
+            pass
+        with open(path, "a", encoding="utf-8", errors="replace") as f:
             f.write("\n==== %s  %s %s\n"
                     % (time.strftime("%Y-%m-%d %H:%M:%S"),
                        request.method, request.url.path))
-            traceback.print_exc(file=f)
+            # 校验类异常会把整个请求体（可能是几 MB 的图片二进制）嵌进
+            # traceback，写日志时既爆 UnicodeDecodeError 又把文件灌成几十 MB。
+            # 截断 + 替换不可解码字节，排障要的是栈，不是载荷。
+            text = traceback.format_exc()
+            f.write(text[:8000])
+            if len(text) > 8000:
+                f.write("\n...（已截断，完整堆栈 %d 字符）\n" % len(text))
     except Exception:
         pass
     traceback.print_exc()
@@ -855,6 +899,75 @@ def health():
             # 诊断用——用户反馈"越用越卡"时先看这里。
             "memory_mb": _server_memory_mb(),
             "max_sessions": MAX_SESSIONS}
+
+
+@app.get("/api/version")
+def version():
+    """版本与构建信息。UI 的「关于」和更新检查以此为本地基准。
+
+    update_url 指向 GitHub Releases 的 latest 接口；仓库未公开时该地址
+    返回 404，前端把它当「检查不可用」静默处理，绝不能弹错打扰用户。
+    """
+    return {
+        "name": "RetouchLab",
+        "version": APP_VERSION,
+        "build": APP_BUILD,
+        "frozen": bool(getattr(sys, "frozen", False)),
+        "python": sys.version.split()[0],
+        # 公开仓库后更新检查才会真正生效；换分发渠道时改这里。
+        "update_url": ("https://api.github.com/repos/wmc-ccb/RetouchLab"
+                       "/releases/latest"),
+    }
+
+
+def _parse_error_log(limit: int = 20):
+    """解析 out/error.log，按 `==== 时间 METHOD 路径` 分段返回最近几条。
+
+    每条取：时间、请求、异常类型（堆栈最后一行）、首行堆栈上下文。
+    崩溃上报的「复制诊断报告」直接用这份结构化数据，用户不用找文件。
+    """
+    from engine.paths import out_dir
+
+    path = os.path.join(out_dir(), "error.log")
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except Exception:
+        return []
+    entries = []
+    blocks = text.split("\n==== ")
+    for block in reversed(blocks[1:]):  # 新的在后，倒序取
+        lines = [l for l in block.strip().splitlines() if l.strip()]
+        if not lines:
+            continue
+        head = lines[0].strip()          # "2026-10-24 12:00:00  POST /api/x"
+        exc_line = ""
+        for l in reversed(lines):        # 最后一帧是异常类型与消息
+            if l.startswith(("Traceback", "  ")) or l.startswith("\t"):
+                continue
+            exc_line = l.strip()
+            break
+        parts = head.split("  ", 1)
+        entries.append({
+            "time": parts[0],
+            "request": parts[1] if len(parts) > 1 else "",
+            "exception": exc_line[:300],
+        })
+        if len(entries) >= limit:
+            break
+    return entries
+
+
+@app.get("/api/errors")
+def errors(limit: int = 20):
+    """最近的服务端未捕获异常（out/error.log 的结构化视图）。
+
+    配合 /api/diagnose 组成「复制诊断报告」：发行版用户反馈问题时，
+    点一下关于面板里的复制按钮即可，不用去翻安装目录。
+    """
+    return {"errors": _parse_error_log(min(limit, 100))}
 
 
 @app.get("/api/diagnose")

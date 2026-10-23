@@ -32,15 +32,22 @@ def main():
         print("Chrome CDP 未运行，跳过界面验证")
         return 0
 
-    tabs = [t for t in requests.get(CDP + "/json", timeout=10).json()
-            if t.get("type") == "page"]
-    if not tabs:
-        r = requests.put(CDP + "/json/new?about:blank", timeout=15)
-        if not r.ok:
-            print("建标签失败:", r.status_code)
-            return 1
-        tabs = [r.json()]
-    target = tabs[0]
+    # 打包服务必须先起（assemble 后手动启动，或启动.bat）。
+    # 探不到就明确报告——绝不能继续导航标签页：这里曾经征用 tabs[0]
+    # 导到 8766，测完不还原，把同批跑的其它 UI 测试全部毒死
+    # （它们都在找 8765 的标签页）。
+    try:
+        requests.get(B + "/api/health", timeout=3)
+    except Exception:
+        print("RESULT: SKIPPED（%s 无打包服务，先启动 dist\\RetouchLab\\启动.bat）" % B)
+        return 0
+
+    # 用自己的标签页，用完即关：源码版的 8765 标签页不能动
+    r = requests.put(CDP + "/json/new?" + B + "/", timeout=15)
+    if not r.ok:
+        print("建标签失败:", r.status_code)
+        return 1
+    target = r.json()
 
     ws = websocket.create_connection(target["webSocketDebuggerUrl"],
                                      timeout=60)
@@ -122,6 +129,12 @@ def main():
         print("截图失败:", str(e)[:60])
 
     ws.close()
+    # 关掉自己的标签页：留着会占 CDP，也会让"找 8765 标签页"的
+    # 其它测试多一次无关匹配
+    try:
+        requests.get(CDP + "/json/close/" + target["id"], timeout=10)
+    except Exception:
+        pass
     print("\nRESULT: %s" % ("FAILED -> %s" % FAIL if FAIL else "ALL PASS"))
     return 1 if FAIL else 0
 

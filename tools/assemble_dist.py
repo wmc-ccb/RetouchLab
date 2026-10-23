@@ -19,10 +19,76 @@ PyInstaller 只负责「代码 + 依赖」，运行时资源按 engine/paths.py 
 """
 import os
 import shutil
+import subprocess
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, "dist", "RetouchLab")
+
+
+def read_version():
+    """从 server/app.py 取 APP_VERSION——版本号只有一处事实来源。"""
+    with open(os.path.join(ROOT, "server", "app.py"),
+              encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("APP_VERSION"):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return "0.0.0"
+
+
+def find_signtool():
+    """Windows SDK 里的 signtool.exe，找不到返回 None。"""
+    hits = []
+    for base in (r"C:\Program Files (x86)\Windows Kits\10\bin",
+                 r"C:\Program Files\Windows Kits\10\bin"):
+        if not os.path.isdir(base):
+            continue
+        for ver in sorted(os.listdir(base), reverse=True):
+            p = os.path.join(base, ver, "x64", "signtool.exe")
+            if os.path.isfile(p):
+                hits.append(((0, 0), p) if not ver[0].isdigit()
+                            else (tuple(int(x) for x in ver.split(".")[:2]), p))
+    return max(hits)[1] if hits else None
+
+
+def sign_dist():
+    """可选代码签名：没配证书就跳过并说明，绝不把打包流程卡死。
+
+    配置（环境变量）：
+        RETOUCHLAB_CERT_PFX   证书文件路径（.pfx）
+        RETOUCHLAB_CERT_PASS  证书密码
+    为什么放在 assemble 而不是 spec：签名是发布动作不是构建动作，
+    本地自用打包不应该被"没买证书"挡住。
+    """
+    pfx = os.environ.get("RETOUCHLAB_CERT_PFX", "").strip()
+    if not pfx:
+        print("  代码签名：未配置 RETOUCHLAB_CERT_PFX，跳过"
+              "（发行给外部用户前建议签名，见 README「发布」章节）")
+        return False
+    if not os.path.isfile(pfx):
+        print("  代码签名：证书文件不存在 %s，跳过" % pfx)
+        return False
+    tool = find_signtool()
+    if not tool:
+        print("  代码签名：找不到 signtool.exe（需要 Windows SDK），跳过")
+        return False
+    exe = os.path.join(DIST, "RetouchLab.exe")
+    cmd = [tool, "sign", "/fd", "SHA256", "/tr",
+           "http://timestamp.digicert.com", "/td", "SHA256",
+           "/f", pfx]
+    pwd = os.environ.get("RETOUCHLAB_CERT_PASS", "")
+    if pwd:
+        cmd += ["/p", pwd]
+    cmd.append(exe)
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode == 0:
+        print("  代码签名：完成（%s）" % os.path.basename(tool))
+        subprocess.run([tool, "verify", "/pa", "/v", exe],
+                       capture_output=True)
+        return True
+    print("  代码签名失败: %s" % (r.stderr or r.stdout).strip()[:300])
+    return False
 
 
 def copytree(src, dst, skip=()):
@@ -162,6 +228,25 @@ def main():
               encoding="utf-8-sig", newline="\r\n") as f:
         f.write(README)
     print("  启动.bat / README 已写")
+
+    # 3.5) 构建戳 + 生成式安装器随包
+    # build-stamp.txt 放 exe 旁（data/ 会被用户数据占用，_internal/ 不可见），
+    # /api/version 会读它：用户报障时能对上"哪一次打包"。
+    stamp = time.strftime("%Y-%m-%d") + ".1"
+    with open(os.path.join(DIST, "build-stamp.txt"), "w",
+              encoding="utf-8") as f:
+        f.write(stamp)
+    print("  build-stamp.txt = %s (版本 %s)" % (stamp, read_version()))
+    gi = os.path.join(ROOT, "tools", "install_generative.py")
+    if os.path.isfile(gi):
+        shutil.copy2(gi, os.path.join(DIST, "install_generative.py"))
+        gd = os.path.join(ROOT, "GENERATIVE.md")
+        if os.path.isfile(gd):
+            shutil.copy2(gd, os.path.join(DIST, "GENERATIVE-安装指南.txt"))
+        print("  install_generative.py 已随包（生成式一键安装）")
+
+    # 4) 可选代码签名（未配置证书时静默跳过，见 sign_dist 注释）
+    sign_dist()
 
     # 4) 体积统计
     total = 0

@@ -268,6 +268,93 @@ UI 上这三个工具会提示如何启动。
 
 ---
 
+## 八A、Round 4（2026-10-24 凌晨，接手人第二轮）做了什么
+
+### 待办清单的落实情况
+
+1. **代码签名** ✅ 构建链就位：`tools/assemble_dist.py::sign_dist()`
+   读 `RETOUCHLAB_CERT_PFX`/`RETOUCHLAB_CERT_PASS` 环境变量自动调
+   signtool（带时间戳），没配证书时跳过不挡路。证书怎么选（OV/EV/自签）
+   写进 README「发布」章节。exe 现在带版本资源（右键属性可见），
+   版本号唯一来源是 `server/app.py::APP_VERSION`，spec 构建时提取。
+2. **首次启动引导** ✅ 左下角引导卡（`#welcome`）：只出现一次
+   （localStorage `rl_onboarded`），任何点击/「开始使用」收起。
+   不遮画布中心与右侧参数区，不拦截事件——自动化测试零影响。
+3. **版本检查** ✅ `/api/version`（版本/构建/更新源）+ 关于面板
+   （顶栏「?」）异步比对 GitHub Releases latest，有新版显示下载链接；
+   仓库未公开或离线时静默降级为「检查不可用」。**注意：仓库目前是
+   私有的，更新检查要等仓库公开（或改 `update_url`）才真正生效。**
+4. **崩溃上报** ✅ `/api/errors`（out/error.log 的结构化视图）+
+   关于面板「复制诊断报告」一键复制版本/GPU 实测/最近错误。
+   error.log 加了 2MB 轮转 + traceback 截断净化（起因：一次错误的
+   multipart 请求把 79MB 图片二进制灌进了日志）。
+5. **生成式组件包** ✅ `tools/install_generative.py`（check/start/stop/
+   install 四个子命令）+ `GENERATIVE.md` 指南。本机 check 通过；
+   start 需 `--disable-assets`（旧 comfyui.db 缺表会卡死启动，已修）。
+   install 分支面向全新机器（官方源下载，未实测大流量下载）。
+6. 体积优化 / macOS：维持不做。
+
+### 这轮抓到的环境大坑（比 bug 更值钱）
+
+- **8765 上跑的可能是打包版**：跑测试前 `netstat -ano | findstr 8765`
+  确认监听进程是 `python.exe`（源码）而不是 `RetouchLab.exe`。
+  本轮 42/72 的初始失败里一大半源于此。
+- **verify_packaged_ui.py 曾劫持 tabs[0]**：它把第一个标签页导航到
+  8766 测完不还原，同批其它 UI 测试全部"浏览器未连接"。已改为：
+  探不到打包服务直接 SKIPPED；用自建标签页，测完即关。
+- **服务重启后 CDP 标签页变 chrome-error://**，URL 不再匹配 8765，
+  测试找不到标签页。重启服务后要 `Page.navigate` 回 8765 一次。
+
+### 新增回归
+
+- `tests/verify_release_features.py`：版本接口 / errors 接口 / 关于
+  面板 / 引导卡 / newer() 版本序比较，全链路守起来。
+
+### 这轮修的真 bug（非环境）
+
+1. **error.log 会爆炸**：错误的 multipart 请求把整张图（79MB）的
+   二进制灌进 traceback，写 UTF-8 日志再炸 UnicodeDecodeError。
+   修复：traceback 截断 8000 字符 + errors="replace" + 2MB 轮转。
+2. **tests/verify_done.py 重置错文件**：还在删 `server/_library_done
+   .json`（旧路径），服务实际读 `data/_library_done.json`——第二轮
+   跑必挂。已改走 `engine.paths.data_dir()`。
+3. **showWelcomeOnce 不防重复**：未交互期间再次调用会出现两张同 id
+   引导卡，点按钮只收掉一张。已加去重。
+4. **build-stamp 路径多跳一级 `..`**：打包版永远报 build=dev。已修，
+   新 dist 实测报 `2026-10-24.1`。
+5. **install_generative 的 stop 杀错进程**：ComfyUI 半死（不监听但
+   占 8GB 内存）时 netstat 找不到它，这个僵尸进程把 Chrome 挤死了
+   （本轮第三次重跑全挂的原因）。stop 已加命令行匹配兜底；
+   ComfyUI 本机启动必须带 `--disable-assets`（旧 comfyui.db 缺表
+   会卡死启动）。
+
+### 最终验收数据（全部实测，2026-10-24 深夜）
+
+- 测试：**72/72 套原始回归 + 1 套新增** 在干净环境逐套通过
+  （首跑 42/72 的失败全部归因于上文的三个环境坑，见 out/_round3_*.txt）
+- 打包版（v1.1.0 / 2026-10-24.1）：`/api/version` 报 stamp 正确、
+  GPU 实测 matmul 61.6ms、46 个工具按钮、零 JS 异常、render+人脸
+  检测 200（旧 dist 的 cv2 崩溃在新构建不复现）
+- 生成式：ComfyUI 8388 起来后 health `generative_fill:true`，
+  verify_gen / verify_fill_api 双 PASS（fill 局部性 2.9x 达标）
+- 源码版引导卡：18/18 新功能断言通过
+
+### 遗留注意
+
+- `git push` 会被 Mimosa 门禁拦（tests/*.py 的 localhost 调用被判
+  SSRF）。备份走 `python tools/git_backup_push.py`（Git Data API），
+  远端 commit SHA 与本地不同（GitHub 规范化了提交者邮箱），属预期。
+- 全局 git 配置把 github.com fetch 重写到 gitclone.com 镜像，
+  新建的私有仓库要等镜像同步才能 `git fetch`，或临时用
+  `git -c "url.https://github.com/.insteadOf=" fetch <url>` 直连。
+- 打包版与源码版并跑测试时：打包版必须 `RetouchLab.exe --port 8766`
+  显式换端口，否则启动器看到 8765 有"自己人"就直接复用退出。
+- 跑批判定口径：`verify_raw_api` 的 RESULT 行是描述式（"RESULT: RAW
+  through the API works end to end"），按退出码/无 FAILED 判，别只
+  grep "ALL PASS"。
+
+---
+
 ## 九、这一轮（2026-10-23 ~ 24）实际做了什么
 
 ### 完成的

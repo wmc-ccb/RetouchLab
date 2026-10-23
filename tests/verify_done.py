@@ -16,7 +16,12 @@ B = "http://127.0.0.1:8765"
 CDP = "http://127.0.0.1:9223"
 OUT = os.path.join(ROOT, "out")
 FAIL = []
-DONEF = os.path.join(ROOT, "server", "_library_done.json")
+# done 表跟着 DATA_DIR 走（engine/paths.py 统一解析）：早期写在
+# server/ 下，paths 迁移后挪到了 data/——重置旧文件等于没重置，
+# 第二次跑必挂「新装 done 表为空」。
+from engine.paths import data_dir as _data_dir
+
+DONEF = os.path.join(_data_dir(), "_library_done.json")
 SRC = r"C:\Users\Rana\Desktop\26cicf\d3\宫园薰\_DSC7550.jpg"
 
 
