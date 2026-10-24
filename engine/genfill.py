@@ -193,7 +193,7 @@ def _fetch(pid: str, timeout: float) -> np.ndarray:
 
     t0 = time.perf_counter()
     while time.perf_counter() - t0 < timeout:
-        hist = requests.get(SERVER + "/history/" + pid, timeout=30).json()
+        hist = requests.get(SERVER + "/history/" + pid, timeout=60).json()
         if pid in hist:
             break
         time.sleep(1.0)

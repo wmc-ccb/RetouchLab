@@ -71,7 +71,8 @@ hidden = [
     "rawpy",
     # engine 各模块（被动态 import 的）
     "engine.autofix", "engine.automask", "engine.batch", "engine.bgclean",
-    "engine.brush", "engine.cattree", "engine.cliponnx", "engine.crop",
+    "engine.brush", "engine.cattree", "engine.cliponnx", "engine.comfy_mgr",
+    "engine.crop",
     "engine.curves", "engine.defringe", "engine.eyes", "engine.face",
     "engine.faceparse", "engine.formula", "engine.genfill", "engine.gentools",
     "engine.geoface", "engine.grade", "engine.grading", "engine.grassfix",

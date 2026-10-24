@@ -233,6 +233,13 @@ def _warm_models():
                 MT._clip()
         except Exception:
             pass
+        # ComfyUI 空闲自动停止的看护线程（拉起过的 15 分钟没用就停，
+        # 还回 ~8GB 内存）
+        try:
+            from engine import comfy_mgr
+            comfy_mgr.install_watcher()
+        except Exception:
+            pass
     threading.Thread(target=work, daemon=True).start()
 
 _sessions: "OrderedDict[str, dict]" = OrderedDict()
@@ -1416,6 +1423,13 @@ def gen(req: GenRequest):
 
     s = _get_session(req.session)
     img = s["preview"]
+    # AI 服务懒启动：没就绪时后台拉起并让前端等就绪重试，而不是把
+    # 「去开终端」这个用户（打包版根本没有 Python）做不到的事甩回给他。
+    from engine import comfy_mgr
+    from engine import genfill as _gf
+    if not _gf.available():
+        comfy_mgr.start(background=True)
+        raise HTTPException(503, "AI 服务正在启动，请稍候片刻再点生成")
     mask = None
     if req.mask_png:
         arr = np.frombuffer(b64.b64decode(req.mask_png), np.uint8)
@@ -1458,11 +1472,14 @@ def gen(req: GenRequest):
     except ValueError as e:
         raise HTTPException(400, str(e))
     except RuntimeError as e:
-        raise HTTPException(503, "ComfyUI 不可用 " + str(e)[:100])
+        from engine import comfy_mgr as _cm
+        _cm.start(background=True)
+        raise HTTPException(503, "ComfyUI 不可用，正在尝试启动：" + str(e)[:80])
     except Exception as e:
         raise HTTPException(500, "生成失败: " + str(e)[:120])
     if req.commit:
         _commit(s, out, "生成弁" + req.feature)
+    comfy_mgr.touch()      # 成功使用：空闲自动停止从这里重新计时
     return JSONResponse({
         "image": base64.b64encode(encode_jpeg(out, 92)).decode("ascii"),
         "info": info, "committed": bool(req.commit)})
@@ -3517,10 +3534,13 @@ def fill(req: FillRequest):
     """Generative fill: synthesise the masked region via local ComfyUI."""
     import base64 as _b64
     import cv2 as _cv2
+    from engine import comfy_mgr
     from engine import genfill
 
     if not genfill.available():
-        raise HTTPException(503, "ComfyUI not reachable or inpaint model missing")
+        # 懒启动 + 明确告知（与 /api/gen 同一套语义）
+        comfy_mgr.start(background=True)
+        raise HTTPException(503, "AI 服务正在启动，请稍候片刻再试")
     s = _get_session(req.session)
     img = s["preview"]
 
@@ -3545,6 +3565,7 @@ def fill(req: FillRequest):
     # the filled preview becomes the session's working image, so subsequent
     # renders build on it; the original full-res file is untouched
     _commit(s, out, "生成填充")
+    comfy_mgr.touch()
     return JSONResponse({
         "image": base64.b64encode(encode_jpeg(out, 90)).decode("ascii"),
         "info": info,
@@ -3559,6 +3580,34 @@ def fill_status():
     return JSONResponse({"available": genfill.available(),
                          "server": genfill.SERVER,
                          "checkpoint": genfill.CHECKPOINT})
+
+
+class AiServiceAction(BaseModel):
+    action: str            # "start" | "stop"
+    wait: bool = False     # start 时同步等就绪（最长 5 分钟）
+
+
+@app.get("/api/ai/service")
+def ai_service_status():
+    """AI 服务（ComfyUI）状态：面板状态条的数据源。
+
+    ready/starting/comfy_dir 一次给全，前端据此渲染「就绪/启动中/
+    未安装」三态，不再让用户对着报错猜。
+    """
+    from engine import comfy_mgr
+    return JSONResponse(comfy_mgr.status())
+
+
+@app.post("/api/ai/service")
+def ai_service_action(req: AiServiceAction):
+    """启动/停止 ComfyUI。启动默认异步（立即返回 starting），
+    前端轮询 GET 到 ready；wait=True 供脚本化场景同步等待。"""
+    from engine import comfy_mgr
+    if req.action == "start":
+        return JSONResponse(comfy_mgr.start(background=not req.wait))
+    if req.action == "stop":
+        return JSONResponse(comfy_mgr.stop())
+    raise HTTPException(400, "action 必须是 start 或 stop")
 
 
 # --------------------------------------------------------------------------

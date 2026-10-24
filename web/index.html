@@ -3841,13 +3841,79 @@ async function exportAutoMask(mode) {
 // 补集；创成式填充是用户在画布上手涂（毛笔模式画 mask 后回本面板）；
 // 道具修复自动识别灯架/柔光箱，也可手涂。ComfyUI 未启动时面板给出
 // 启动命令而不是死按钮。
-const GEN = { feature: 'backdrop', prompt: '', strength: 1.0 };
+const GEN = { feature: 'backdrop', prompt: '', strength: 1.0,
+  svc: { ready: false, starting: false, comfy_dir: null, timer: null },
+  autoRetried: false };
+
+// 场景预设：中文按钮 → 英文 prompt（SD1.5 只懂英文，替用户写好，
+// 不写 prompt 也能一键出效果）
+const GEN_PRESETS = {
+  backdrop: [
+    ['白墙影棚', 'clean studio white wall, soft even lighting, professional portrait backdrop'],
+    ['户外草坪', 'outdoor park, green lawn, natural sunlight, shallow depth of field, bokeh'],
+    ['黄昏窗边', 'warm golden hour light through window, cozy indoor, soft glow'],
+    ['纯净渐变', 'smooth gradient studio backdrop, light grey to white, minimal, clean'],
+    ['复古砖墙', 'old brick wall, rustic texture, warm tone background']],
+  fill: [
+    ['延伸背景', 'extend the surrounding background naturally, seamless, consistent lighting'],
+    ['干净地面', 'clean seamless floor, natural shadow, remove clutter'],
+    ['自然绿植', 'soft green plants, out of focus foliage, natural background']],
+  prop: [],
+};
+
+// AI 服务状态条：就绪(绿)/启动中(黄)/未启动(灰+按钮)/未安装(提示)
+async function pollAiService() {
+  try {
+    const r = await fetch('/api/ai/service');
+    const j = await r.json();
+    GEN.svc.ready = !!j.ready;
+    GEN.svc.starting = !!j.starting;
+    GEN.svc.comfy_dir = j.comfy_dir || null;
+    GEN.svc.last_error = j.last_error || '';
+  } catch (e) { /* 状态条失联不打断面板 */ }
+  const bar = $('aiSvcBar');
+  if (!bar) return;
+  const btn = $('aiSvcBtn');
+  if (GEN.svc.ready) {
+    bar.innerHTML = '<span style="color:var(--ok)">● AI 服务就绪</span>' +
+      ' · 空闲 15 分钟自动停止';
+    if (btn) btn.style.display = 'none';
+  } else if (GEN.svc.starting) {
+    bar.innerHTML = '<span style="color:var(--gold)">◐ AI 服务启动中…</span>' +
+      ' 首次约 1-2 分钟（加载 2.7GB 模型）';
+    if (btn) btn.style.display = 'none';
+  } else if (GEN.svc.comfy_dir) {
+    bar.innerHTML = '<span style="color:var(--dim)">○ AI 服务未运行</span>';
+    if (btn) { btn.style.display = ''; btn.disabled = false; }
+  } else {
+    bar.innerHTML = '<span style="color:var(--dim)">○ AI 组件未安装</span>' +
+      ' — 见安装目录 GENERATIVE-安装指南.txt';
+    if (btn) btn.style.display = 'none';
+  }
+  clearTimeout(GEN.svc.timer);
+  if (!GEN.svc.ready) {
+    GEN.svc.timer = setTimeout(pollAiService, GEN.svc.starting ? 3000 : 15000);
+  }
+}
+
+async function startAiService() {
+  const btn = $('aiSvcBtn');
+  if (btn) { btn.disabled = true; }
+  try {
+    await fetch('/api/ai/service', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'start' }) });
+  } catch (e) { log('启动请求失败：' + e.message); }
+  GEN.svc.starting = true;
+  pollAiService();
+}
 
 function renderGen() {
   const wrap = $('sliders');
   wrap.innerHTML = '<div class="groupTitle">生成式 · AI 布景 / 创成式填充 / 道具修复</div>' +
-    '<div class="bstat" id="genStat">本地 ComfyUI + SD1.5 inpaint。' +
-    'mask 外逐像素不变。生成一张约 15~30 秒。</div>';
+    '<div class="bstat" id="aiSvcBar" style="display:flex;align-items:center;' +
+    'gap:8px;flex-wrap:wrap">AI 服务状态查询中…</div>' +
+    '<button class="chip" id="aiSvcBtn" style="display:none">启动 AI 服务</button>';
 
   const feats = [['backdrop', 'AI 布景'], ['fill', '创成式填充'],
                  ['prop', '道具修复']];
@@ -3859,11 +3925,17 @@ function renderGen() {
     '>' + f[1] + '</button>').join('');
   wrap.appendChild(row);
 
+  // 场景预设：点一下填好英文 prompt
+  const presetWrap = document.createElement('div');
+  presetWrap.id = 'genPresets';
+  presetWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:2px 0';
+  wrap.appendChild(presetWrap);
+
   const pwrap = document.createElement('div');
   pwrap.innerHTML = '<div class="bstat" id="genPromptHint">描述想要的效果：</div>' +
     '<textarea id="genPrompt" rows="2" style="width:100%;background:var(--panel3);' +
     'color:var(--text);border:1px solid var(--line);border-radius:5px;' +
-    'font-size:11px;padding:5px" placeholder="例：sunny autumn park, golden trees, bokeh">' +
+    'font-size:11px;padding:5px" placeholder="点上面的场景预设，或自己写英文描述">' +
     (GEN.prompt || '') + '</textarea>';
   wrap.appendChild(pwrap);
   $('genPrompt').oninput = e => { GEN.prompt = e.target.value; };
@@ -3893,29 +3965,53 @@ function renderGen() {
   view.style.cssText = 'margin-top:8px;text-align:center';
   wrap.appendChild(view);
 
+  const renderPresets = () => {
+    const list = GEN_PRESETS[GEN.feature] || [];
+    presetWrap.innerHTML = list.map(p =>
+      '<button class="chip genP" data-p="' + p[1].replace(/"/g, '&quot;') +
+      '" style="font-size:11px">' + p[0] + '</button>').join('') ||
+      '<span class="bstat">（道具修复自动识别，无需描述）</span>';
+    presetWrap.querySelectorAll('.genP').forEach(b => {
+      b.onclick = () => {
+        GEN.prompt = b.dataset.p;
+        $('genPrompt').value = GEN.prompt;
+        presetWrap.querySelectorAll('.genP').forEach(x =>
+          x.style.borderColor = '');
+        b.style.borderColor = 'var(--gold)';
+      };
+    });
+  };
+  renderPresets();
+
   row.querySelectorAll('.genF').forEach(b => {
     b.onclick = () => {
       GEN.feature = b.dataset.f;
       row.querySelectorAll('.genF').forEach(x => x.style.borderColor = '');
       b.style.borderColor = 'var(--gold)';
       $('genPromptHint').textContent =
-        GEN.feature === 'backdrop' ? '描述想要的新场景：' :
-        GEN.feature === 'fill' ? '描述涂抹区里想要出现什么：' :
+        GEN.feature === 'backdrop' ? '描述想要的新场景（推荐点下方预设）：' :
+        GEN.feature === 'fill' ? '描述涂抹区里想要出现什么（推荐点下方预设）：' :
         '（道具修复自动识别，可留空）';
+      renderPresets();
     };
   });
+  $('aiSvcBtn').onclick = startAiService;
   $('genRun').onclick = runGen;
   $('genMask').onclick = () => {
     // 进手涂模式：画的就是生成 mask（复用毛笔的 mask 层）
     if (typeof startGenMaskPaint === 'function') startGenMaskPaint();
     else log('手涂 mask：用毛笔（B）在画布上涂，涂完回来点生成');
   };
+  pollAiService();
 }
-
 async function runGen() {
   if (!S.session) { log('先载入图片'); return; }
   if (GEN.feature !== 'prop' && !GEN.prompt.trim()) {
-    log('先写一句描述'); return;
+    log('先写一句描述，或点场景预设'); return;
+  }
+  // 中文 prompt 对 SD1.5 基本无效——拦一下，而不是让用户拿到一张没变化的图
+  if (GEN.feature !== 'prop' && /[\u4e00-\u9fff]/.test(GEN.prompt)) {
+    log('注意：AI 只懂英文描述，点上方场景预设可一键填入');
   }
   const btn = $('genRun'), info = $('genInfo');
   btn.disabled = true;
@@ -3932,7 +4028,27 @@ async function runGen() {
       body: JSON.stringify({ session: S.session, feature: GEN.feature,
         prompt: GEN.prompt, strength: GEN.strength, mask_png: maskB64 }) });
     const j = await r.json();
-    if (!r.ok) throw new Error(j.detail || r.statusText);
+    if (!r.ok) {
+      // 503 = AI 服务在启动：轮询到就绪自动重试一次，用户只觉得"多等了一会"
+      if (r.status === 503 && !GEN.autoRetried) {
+        GEN.autoRetried = true;
+        const t0 = Date.now();
+        while (Date.now() - t0 < 300000) {
+          if (info) info.textContent = 'AI 服务启动中… ' +
+            Math.round((Date.now() - t0) / 1000) + 's（就绪后自动重试）';
+          await new Promise(res => setTimeout(res, 5000));
+          try {
+            const st = await (await fetch('/api/ai/service')).json();
+            if (st.ready) break;
+          } catch (e) { /* 继续等 */ }
+        }
+        btn.disabled = false; setBusy(false);
+        await runGen();
+        GEN.autoRetried = false;
+        return;
+      }
+      throw new Error(j.detail || r.statusText);
+    }
     if ($('genView')) {
       $('genView').innerHTML =
         '<img src="data:image/jpeg;base64,' + j.image +
