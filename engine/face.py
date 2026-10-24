@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from .paths import models_dir
 import os
+import threading
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -107,7 +108,16 @@ class Face:
 
 
 class FaceDetector:
-    """YuNet-backed detector; safe to reuse across images."""
+    """YuNet-backed detector; safe to reuse across images (and across threads).
+
+    cv2.FaceDetectorYN 的底层 Net **不是线程安全的**：服务端线程池并发
+    处理 /api/render、/api/faces 时，两个线程同时进 setInputSize/detect
+    会触发原生层断言（buf.shape() == m.shape()），偶发直接把整个进程
+    拖进死循环（GIL 被原生代码占住，全端点无响应，实测 CPU 烧到
+    1000s+）。所有调用必须过同一把锁。
+    """
+
+    _detect_lock = threading.Lock()
 
     def __init__(self, score_threshold: float = 0.6, nms_threshold: float = 0.3,
                  top_k: int = 50, dense: bool = True):
@@ -145,8 +155,9 @@ class FaceDetector:
         """
         h, w = img.shape[:2]
         bgr = cv2.cvtColor((np.clip(img, 0, 1) * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
-        self._det.setInputSize((w, h))
-        _, raw = self._det.detect(bgr)
+        with FaceDetector._detect_lock:
+            self._det.setInputSize((w, h))
+            _, raw = self._det.detect(bgr)
         faces: List[Face] = []
         if raw is None:
             return faces

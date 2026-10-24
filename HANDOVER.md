@@ -371,6 +371,28 @@ Chrome + 测试进程会把 32GB 吃光，测试会假挂。顺序应该是：�
 ComfyUI → 轻测试先跑 → 重测试单独跑；发现多个 ComfyUI 实例时先清
 僵尸（netstat 看端口归属，命令行匹配清理）。
 
+### 服务器冻死 bug（2026-10-25 凌晨最终全量回归时抓到，本轮最重要发现）
+
+**engine/face.py 的人脸检测没有锁**：cv2.FaceDetectorYN 的底层 Net
+不是线程安全的，服务端线程池并发处理 /api/render、/api/faces 时，
+两个线程同时进 setInputSize/detect 会触发原生层断言
+（buf.shape() == m.shape()，error.log 里 16 秒 5 连崩）， unlucky 的
+交错会把整个进程拖进死循环——GIL 被原生代码占住，**全端点无响应**
+（实测 CPU 烧到 1000s+，只能 kill）。**这也是 10-24 早上打包版
+cv2 崩溃的同一根因**（当时以为是打包环境问题，其实是并发竞态）。
+
+修复：FaceDetector 类级 `_detect_lock`，setInputSize+detect 原子化。
+验证：8 线程并发 render 压测 8/8 成功且服务器健康（修复前同条件
+必崩）；全套件复跑转正。landmarks 用 onnxruntime（Run 线程安全），
+其它模块无共享 cv2.dnn 对象，已排查。
+
+**找这种 bug 的方法**：跑批中途服务器全端点超时 + error.log 出现
+连续多条 cv2 断言 = 并发竞态，不是环境问题。别再重装环境了，
+看 error.log 的时间戳密度。
+
+另：verify_dualcol 的预设缩略图断言在服务器冷启动后首跑会抖
+（缩略图缓存未热）——复跑即过，属测试时序，不是产品 bug。
+
 ### 最终验收数据（全部实测）
 
 - 测试：**72/72 套原始回归 + 1 套新增** 在干净环境逐套通过
