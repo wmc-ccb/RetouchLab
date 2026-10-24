@@ -23,7 +23,12 @@ B = "http://127.0.0.1:8765"
 CDP = "http://127.0.0.1:9223"
 OUT = os.path.join(ROOT, "out")
 FAIL = []
-SRCF = os.path.join(ROOT, "server", "_library_sources.json")
+# 来源表跟着 DATA_DIR 走（engine/paths.py 统一解析）：早期写在 server/
+# 下，paths 迁移后挪到了 data/。重置旧文件等于没重置——一旦前面的
+# 套件往 data/ 写过来源，本套必挂「新装状态来源为空」。
+from engine.paths import data_dir as _data_dir
+
+SRCF = os.path.join(_data_dir(), "_library_sources.json")
 SRC = r"C:\Users\Rana\Desktop\26cicf\d3\宫园薰\_DSC7550.jpg"
 
 

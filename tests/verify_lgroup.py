@@ -9,7 +9,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 B = "http://127.0.0.1:8765"
 FAIL = []
-GF = os.path.join(ROOT, "server", "_library_groups.json")
+from engine.paths import data_dir as _data_dir  # 状态在 data/ 不在 server/ (paths 迁移); 老位置仅兼容读
+GF = os.path.join(_data_dir(), "_library_groups.json")
+GF_LEGACY = os.path.join(ROOT, "server", "_library_groups.json")
 
 
 def check(n, ok, d=""):
@@ -19,8 +21,10 @@ def check(n, ok, d=""):
 
 
 def clean():
-    if os.path.exists(GF):
-        os.remove(GF)
+    # 两个位置都要清：服务端对新文件缺位时会回退读老位置
+    for f in (GF, GF_LEGACY):
+        if os.path.exists(f):
+            os.remove(f)
 
 
 def main():

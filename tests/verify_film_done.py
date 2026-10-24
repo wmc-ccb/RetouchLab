@@ -15,7 +15,8 @@ B = "http://127.0.0.1:8765"
 CDP = "http://127.0.0.1:9223"
 OUT = os.path.join(ROOT, "out")
 FAIL = []
-DONEF = os.path.join(ROOT, "server", "_library_done.json")
+from engine.paths import data_dir as _data_dir  # 状态在 data/ 不在 server/ (paths 迁移)
+DONEF = os.path.join(_data_dir(), "_library_done.json")
 SRC = r"C:\Users\Rana\Desktop\26cicf\d3\宫园薰\_DSC7550.jpg"
 
 

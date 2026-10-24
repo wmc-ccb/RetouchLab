@@ -14,18 +14,28 @@ import os
 import threading
 from typing import Dict, List
 
+from .paths import data_dir as _data_dir
+
 _LOCK = threading.Lock()
-_FILE = os.path.join(os.path.dirname(os.path.dirname(
+# 状态文件跟着 DATA_DIR 走（engine/paths.py 统一解析）：这里曾是
+# paths 迁移的漏网之鱼，还写在 server/ 下——打包后那在 _internal
+# 里，装进 Program Files 时不可写，「保存分组」直接崩。
+_FILE = os.path.join(_data_dir(), "_library_groups.json")
+# 迁移前的老位置（仅源码布局存在）：新文件没有而老文件有数据时，
+# 读一次老文件，下次保存自然落到新位置。
+_LEGACY_FILE = os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "server", "_library_groups.json")
 
 
 def _load() -> Dict[str, List[str]]:
-    try:
-        with open(_FILE, encoding="utf-8") as fh:
-            data = json.load(fh)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    for path in (_FILE, _LEGACY_FILE):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            continue
+    return {}
 
 
 def _save(data: Dict[str, List[str]]) -> None:

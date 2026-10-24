@@ -53,7 +53,8 @@ def main():
     for d in (watch, outdir):
         shutil.rmtree(d, ignore_errors=True)
         os.makedirs(d, exist_ok=True)
-    clean_st = os.path.join(ROOT, "server", "_user_presets.json")
+    from engine.paths import data_dir as _data_dir  # 状态在 data/ 不在 server/ (paths 迁移)
+    clean_st = os.path.join(_data_dir(), "_user_presets.json")
     # 用已有内置预设 natural，避免依赖用户预设
 
     # 1) 配置并启动监听（启动时目录为空 -> baseline 为空）

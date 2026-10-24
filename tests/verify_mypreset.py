@@ -15,7 +15,8 @@ B = "http://127.0.0.1:8765"
 CDP = "http://127.0.0.1:9223"
 OUT = os.path.join(ROOT, "out")
 FAIL = []
-UPF = os.path.join(ROOT, "server", "_user_presets.json")
+from engine.paths import data_dir as _data_dir  # 状态在 data/ 不在 server/ (paths 迁移)
+UPF = os.path.join(_data_dir(), "_user_presets.json")
 
 
 def check(n, ok, d=""):

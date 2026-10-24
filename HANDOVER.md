@@ -328,7 +328,23 @@ UI 上这三个工具会提示如何启动。
    ComfyUI 本机启动必须带 `--disable-assets`（旧 comfyui.db 缺表
    会卡死启动）。
 
-### 最终验收数据（全部实测，2026-10-24 深夜）
+### 追加（用户质询"确定没 bug"后的复验轮，2026-10-24 傍晚）
+
+6. **engine/lgroup.py 是 paths 迁移的漏网之鱼**：分组状态仍写在
+   `server/_library_groups.json`（打包后在 `_internal` 里，装进
+   Program Files 时不可写，「保存分组」会崩）。已改走
+   `data_dir()`，并对老位置做一次性兼容读。连带发现 5 个测试
+   （done/libimport/lgroup/film_done/mypreset/tether_e2e）也在重置
+   旧路径——它们全靠套件执行顺序侥幸通过，全改为 data_dir()。
+   **教训：dist 目录是增量覆盖，PyInstaller 不清旧文件**——本轮
+   重建后 dist 从 4943 个文件降到 3064 个（1879 个是上版残留），
+   以重建后的为准。
+7. **这台机器的 Chrome+GPU 在持续负载下会偶发死掉**（事件日志有
+   GPU 显存类蓝屏史）。跑批脚本加了套件间 CDP 探活+自动拉起
+   （out/_rescue_run.sh 的 ensure_chrome 可抄），别再让一整批测试
+   跟着浏览器陪葬。
+
+### 最终验收数据（全部实测）
 
 - 测试：**72/72 套原始回归 + 1 套新增** 在干净环境逐套通过
   （首跑 42/72 的失败全部归因于上文的三个环境坑，见 out/_round3_*.txt）
