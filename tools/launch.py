@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
-"""RetouchLab 启动器。
+"""RetouchLab 启动器（桌面应用模式）。
 
-双击 `RetouchLab.bat`（或打包后的 exe）会走到这里，负责：
+双击 exe（或 `python tools/launch.py`）的完整流程：
 
-  1. 单实例检查 —— 端口已占用就直接开浏览器，不重复起进程
-  2. 挑一个可用端口（8765 被别的程序占了就往后找）
-  3. 起 uvicorn，等服务真的能响应再打开浏览器
-  4. 日志写到 out/launcher.log，出错时把原因显示给用户
-  5. Ctrl+C / 关窗口后干净退出
+  1. 单实例检查 —— 已有实例在跑就直接开一个新窗口贴上去，不重复起服务
+  2. 挑一个可用端口（8765 被占就往后找）
+  3. 起服务（后台线程）
+  4. **弹原生应用窗口**（pywebview / WebView2，Win10/11 自带运行时），
+     先显示加载页，服务就绪后自动载入界面
+  5. 关窗口 = 退应用：停服务、顺手停掉自己拉起的 ComfyUI、进程干净退出
 
-设计取舍：
-  - 不隐藏控制台。用户想关掉服务时需要看得到窗口；打包成 exe 后
-    用 --noconsole 也可以，但那样出错时用户只能看到"闪退"。
-  - 浏览器打开失败不算致命（可能是没有默认浏览器），继续跑服务，
-    只是提示用户手敲地址。
+兼容与兜底：
+  - 没有 WebView2 的老系统（或 pywebview 加载失败）自动退回系统浏览器，
+    行为与旧版一致，绝不让用户面对"闪退"。
+  - --browser 强制浏览器模式；--lan 监听局域网（手机/平板仍用浏览器访问）。
+  - 无控制台（打包 windowed）时，致命错误写 out/launcher.log 并弹
+    MessageBox 告知，不搞无声闪退。
 """
 import argparse
 import os
@@ -21,7 +23,6 @@ import socket
 import sys
 import threading
 import time
-import webbrowser
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -38,6 +39,24 @@ except Exception:
 LOG_DIR = os.path.join(ROOT, "out")
 LOG_PATH = os.path.join(LOG_DIR, "launcher.log")
 DEFAULT_PORT = 8765
+WINDOW_TITLE = "RetouchLab — 人像精修"
+
+LOADING_HTML = """<!doctype html><html><head><meta charset="utf-8">
+<style>
+body{margin:0;background:#0a0a0c;color:#ddd;display:flex;flex-direction:column;
+align-items:center;justify-content:center;height:100vh;font:15px/1.8 system-ui,
+"Microsoft YaHei"}
+.logo{font-size:34px;font-weight:600;color:#e8b341;letter-spacing:1px}
+.logo span{color:#e8e9ec}
+.tip{color:#8a8c93;font-size:13px;margin-top:10px}
+.spin{width:34px;height:34px;border:3px solid #26272c;border-top-color:#e8b341;
+border-radius:50%;margin-bottom:22px;animation:r 1s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}
+</style></head><body>
+<div class="spin"></div>
+<div class="logo">Retouch<span>Lab</span></div>
+<div class="tip">正在启动引擎与模型，首次约 10~30 秒…</div>
+</body></html>"""
 
 
 def log(msg):
@@ -54,6 +73,19 @@ def log(msg):
         pass
 
 
+def fatal(msg):
+    """无控制台场景的致命错误：日志 + 消息框，拒绝无声闪退。"""
+    log("致命错误：%s" % msg)
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0, "RetouchLab 启动失败：\n\n%s\n\n详情见 out\\launcher.log"
+                % msg, "RetouchLab", 0x10)
+        except Exception:
+            pass
+
+
 def port_in_use(port, host="127.0.0.1", timeout=0.4):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(timeout)
@@ -67,9 +99,7 @@ def is_our_service(port):
     """端口上跑的是不是 RetouchLab（而不是别的程序）。
 
     判据要**足够严**：只看 "ok" 字段会把任何返回 {"ok":true} 的服务
-    误认成自己，进而"复用"到一个根本不是 RetouchLab 的端口上——用户
-    双击后既没起服务、也没报错，只看到浏览器打开一个陌生页面。
-    这里同时要求 3 个 RetouchLab 特有字段。
+    误认成自己。同时要求 3 个 RetouchLab 特有字段。
     """
     try:
         import json
@@ -90,7 +120,7 @@ def pick_port(preferred):
     """优先用首选端口；被别的程序占了就往后找。
 
     返回 (port, reusable)：reusable 为 True 表示该端口上已经是
-    RetouchLab 自己，调用方应直接开浏览器而不是再起一个实例。
+    RetouchLab 自己，调用方应直接开窗口而不是再起一个实例。
     """
     if not port_in_use(preferred):
         return preferred, False
@@ -99,7 +129,6 @@ def pick_port(preferred):
     for p in range(preferred + 1, preferred + 20):
         if not port_in_use(p):
             return p, False
-    # 全被占：让系统随机分配一个空闲端口
     s = socket.socket()
     try:
         s.bind(("127.0.0.1", 0))
@@ -109,7 +138,6 @@ def pick_port(preferred):
 
 
 def wait_until_ready(port, timeout=90.0):
-    """等服务能应答 /api/health。返回 True 表示就绪。"""
     import urllib.request
 
     deadline = time.time() + timeout
@@ -125,7 +153,65 @@ def wait_until_ready(port, timeout=90.0):
     return False
 
 
-def open_browser_later(url, port, delay_hint=0.0):
+def open_window(url, port, own_service, server=None):
+    """弹桌面窗口；返回 True 表示窗口正常打开并已关闭（正常退出路径）。
+
+    own_service=True：本进程起了服务，关窗口时要负责停服务 + 清理
+    ComfyUI 子进程。False：贴到已有实例，关窗口直接走人。
+    """
+    try:
+        import webview
+    except Exception as e:
+        log("pywebview 不可用（%s），退回浏览器模式" % e)
+        return False
+
+    win = webview.create_window(
+        WINDOW_TITLE, html=LOADING_HTML,
+        width=1440, height=900, min_size=(1100, 700))
+
+    def _navigate():
+        # 加载页先撑住画面，服务就绪后无缝切过去
+        if wait_until_ready(port, timeout=120):
+            log("服务就绪，载入界面: %s" % url)
+            try:
+                win.load_url(url)
+            except Exception:
+                pass
+        else:
+            try:
+                win.load_html("<h3 style='font-family:system-ui'>"
+                              "启动超时，详见 out\\launcher.log</h3>")
+            except Exception:
+                pass
+
+    threading.Thread(target=_navigate, daemon=True).start()
+    try:
+        # webview.start 必须在主线程（Win32 消息循环），返回 = 窗口已关
+        webview.start(gui="edgechromium")
+    except Exception as e:
+        log("窗口创建失败（%s），退回浏览器模式" % e)
+        return False
+
+    # ---- 窗口关闭：干净收尾 ----
+    log("窗口已关闭，正在退出")
+    if own_service:
+        try:
+            from engine import comfy_mgr
+            comfy_mgr.stop()          # 只停我们拉起的 ComfyUI（8GB）
+        except Exception:
+            pass
+        if server is not None:
+            server.should_exit = True
+            time.sleep(0.5)
+    # 模型预热线程等仍持有 torch 上下文，正常退出可能挂住；
+    # 收尾已做完，硬退是打包应用的标准做法。
+    os._exit(0)
+    return True
+
+
+def open_browser(url, port, delay_hint=0.0):
+    import webbrowser
+
     def work():
         if delay_hint:
             time.sleep(delay_hint)
@@ -140,41 +226,12 @@ def open_browser_later(url, port, delay_hint=0.0):
     threading.Thread(target=work, daemon=True).start()
 
 
-def banner(port, reused):
-    host_line = "http://127.0.0.1:%d" % port
-    try:
-        lan_ip = _lan_ip()
-    except Exception:
-        lan_ip = None
-    print()
-    print("  " + "=" * 56)
-    print("   RetouchLab   人像精修引擎")
-    print("  " + "-" * 56)
-    print("   本机:  %s" % host_line)
-    if lan_ip:
-        print("   局域网: http://%s:%d" % (lan_ip, port))
-    if reused:
-        print("   （检测到服务已在运行，直接复用）")
-    else:
-        print("   关闭这个窗口即停止服务")
-    print("  " + "=" * 56)
-    print()
-
-
-def _lan_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("192.168.1.1", 80))
-        return s.getsockname()[0]
-    finally:
-        s.close()
-
-
 def main():
     ap = argparse.ArgumentParser(description="RetouchLab launcher")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--browser", action="store_true",
+                    help="用系统浏览器而不是应用窗口")
     ap.add_argument("--lan", action="store_true",
                     help="监听 0.0.0.0，允许局域网访问")
     args = ap.parse_args()
@@ -186,48 +243,65 @@ def main():
     log("RetouchLab 启动中（Python %s）" % sys.version.split()[0])
     log("目录: %s" % ROOT)
 
-    # ---- 已经有实例在跑：直接开浏览器，不重复起 ----
+    # ---- 已经有实例在跑：贴一个新窗口/开浏览器，不重复起服务 ----
     if reusable:
-        banner(port, reused=True)
         log("复用已运行的服务 %s" % url)
-        if not args.no_browser:
-            try:
-                webbrowser.open(url)
-            except Exception:
-                pass
+        if not args.browser and open_window(url, port, own_service=False):
+            return 0
+        import webbrowser
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
         return 0
 
     if port != args.port:
         log("端口 %d 被占用，改用 %d" % (args.port, port))
 
-    # ---- 起服务 ----
+    # ---- 起服务（后台线程；窗口/浏览器在前面走） ----
     try:
         import uvicorn
     except Exception as e:
-        log("依赖缺失：%s" % e)
-        print("\n启动失败：没找到 uvicorn。请先运行")
-        print("  python -m pip install -r requirements.txt\n")
+        fatal("依赖缺失 uvicorn（%s）" % e)
         return 2
 
-    if not args.no_browser:
-        open_browser_later(url, port)
+    server = None
 
-    banner(port, reused=False)
+    def _serve():
+        nonlocal server
+        try:
+            import server.app as APP
+            config = uvicorn.Config(APP.app, host=host, port=port,
+                                    log_level="warning", access_log=False)
+            server = uvicorn.Server(config)
+            # 非主线程：uvicorn 会跳过信号捕获（源码已处理），Ctrl+C
+            # 语义由窗口关闭代替
+            server.run()
+        except Exception as e:
+            log("服务崩溃：%r" % (e,))
+            import traceback
+            log(traceback.format_exc()[-1500:])
+            fatal("服务线程崩溃：%s" % str(e)[:120])
+            os._exit(1)
 
+    threading.Thread(target=_serve, daemon=True).start()
+
+    if not args.browser and open_window(url, port, own_service=True,
+                                        server=server):
+        return 0
+    # 浏览器兜底路径（无 WebView2 / --browser）
+    open_browser(url, port)
     try:
-        import server.app as APP
-        config = uvicorn.Config(APP.app, host=host, port=port,
-                                log_level="warning", access_log=False)
-        uvicorn.Server(config).run()
+        while True:
+            time.sleep(3600)
     except KeyboardInterrupt:
         log("收到中断，退出")
-    except Exception as e:
-        log("服务崩溃：%r" % (e,))
-        import traceback
-        traceback.print_exc()
-        return 1
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:
+        fatal(str(e)[:200])
+        sys.exit(1)

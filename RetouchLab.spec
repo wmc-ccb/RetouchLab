@@ -45,6 +45,14 @@ excludes = [
 ]
 
 hidden = [
+    # 桌面窗口模式（pywebview / WebView2）；退回浏览器模式的兜底在
+    # tools/launch.py 里，这里只需把两个平台后端收全
+    "webview",
+    "webview.platforms",
+    "webview.platforms.winforms",
+    "webview.platforms.edgechromium",
+    "clr_loader",
+    "pythonnet",
     # uvicorn 的协议实现是字符串动态加载的
     "uvicorn.logging",
     "uvicorn.loops",
@@ -142,13 +150,13 @@ exe = EXE(                                     # noqa: F821
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,                 # UPX 会拖慢启动，也可能被杀软误报
-    console=True,              # 保留控制台：用户要能关服务、看错误
+    console=False,             # 桌面应用：无控制台；错误走 out/launcher.log + MessageBox
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon=os.path.join(HERE, "assets", "retouchlab.ico"),
     version=_vi_file,
 )
 

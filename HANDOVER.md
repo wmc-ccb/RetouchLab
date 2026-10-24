@@ -393,6 +393,36 @@ cv2 崩溃的同一根因**（当时以为是打包环境问题，其实是并�
 另：verify_dualcol 的预设缩略图断言在服务器冷启动后首跑会抖
 （缩略图缓存未热）——复跑即过，属测试时序，不是产品 bug。
 
+### 桌面应用化（2026-10-25 凌晨，用户要求"傻瓜式 + 不要网页形式"）
+
+**双击 RetouchLab.exe → 原生应用窗口**（pywebview 6.2.1 / WebView2，
+Win10/11 系统自带运行时），没有黑控制台、不开浏览器：
+
+- 窗口先显示加载页（品牌色 + "正在启动引擎"），服务就绪后无缝载入
+  界面（`tools/launch.py::open_window`）
+- **没有 WebView2 的老系统自动退回浏览器**，行为与旧版一致；`--browser`
+  可强制
+- 关窗口 = 退应用：停服务 → 停自己拉起的 ComfyUI（还 8GB）→ 进程
+  干净退出（`os._exit`，torch 预热线程不拖尾）
+- 单实例复用：已在跑时再双击 = 贴一个新窗口，不起第二个服务
+- 无控制台场景的致命错误：`fatal()` 写 launcher.log + MessageBox，
+  拒绝无声闪退
+- exe 带图标（`tools/make_icon.py` 生成 assets/retouchlab.ico）和
+  版本资源；`console=False`
+
+打包注意：spec hiddenimports 收了 `webview.platforms.winforms/
+edgechromium + clr_loader + pythonnet`；pywebview 进了
+requirements.txt（==6.2.1）。
+
+**验收实测**：源码与打包版窗口内均 109 控件/46 按钮加载完整
+（WebView2 的 CDP 验证法：启动时设
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9224
+--remote-allow-origins=*"`，然后按普通 CDP 连）；关窗口 → 进程退 →
+端口释放；verify_packaged_ui ALL PASS；zip 第五次重打（3078 文件，
+含图标与 webview 依赖，字节校验一致）。
+
+UI 回归测试仍然打 HTTP 服务（8765），窗口化不影响测试体系。
+
 ### 最终验收数据（全部实测）
 
 - 测试：**72/72 套原始回归 + 1 套新增** 在干净环境逐套通过
