@@ -19,3 +19,4 @@ Thumbs.db
 server/_upload_tmp/
 # mimosa scanner runtime state
 .mimosa/
+*.corrupt
