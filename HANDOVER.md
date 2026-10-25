@@ -522,3 +522,19 @@ UI 回归测试仍然打 HTTP 服务（8765），窗口化不影响测试体系�
    否则会看到几十个假失败，白折腾。
 3. **`is_available()` 为 true 不等于能用**。诊断问题时要看实测数据
    （`/api/diagnose` 的 `gpu_works`、`gpu_matmul_ms`），不要只看布尔值。
+
+
+### 源码傻瓜式上手（2026-10-25 上午）
+
+- `一键安装环境.bat`：找 Python(3.11-3.13) → 建 .venv → 装依赖 →
+  `tools/fetch_models.py` 拉模型，每步可重入（装过的自动跳过）。
+- 模型分发：980MB 全部挂在本仓库 `models-v1` Release（12 资产；
+  子目录路径映射为扁平资产名）。清单 `tools/models_manifest.json`
+  含每文件 sha256；fetch 脚本断点续传+重试+校验后落盘。
+- `ZhaJinWenQianCake.bat` 优先用 .venv。
+- **冷路径实测**：全新 venv 装 138 包 → 服务起 → /api/health 全模型
+  true → render 200。下载闭环实测：删掉 2d106det.onnx 后 fetch 重下
+  并校验通过（中途一次网络超时自动重试续传）。
+- git_backup_push 的 tree SHA 注意：仓库里有中文文件名后，远端 tree
+  SHA 与本地不再逐位一致（GitHub API 做了 Unicode 规范化），但
+  blob 级 188/188 全部一致——验证备份要用 blob 对比，别只比 tree。
