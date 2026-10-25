@@ -8,6 +8,19 @@
 - Python (FastAPI) 引擎 + ONNX 推理 + WebView2 桌面窗口
 - 调光调色 / 人像精修 / 抠图换背景 / 消除 / 批量 / RAW / 联机拍摄
 
+## 快速开始
+
+**方式 A · 普通用户（推荐）**：到 [Releases](https://github.com/wmc-ccb/ZhaJinWenQianCake/releases) 下载打包版（含全部模型，约 6.5GB），解压后**双击 `ZhaJinWenQianCake.exe`** 即可，无需安装任何东西。
+
+**方式 B · 从源码跑**（需要先装 [Python 3.11-3.13](https://www.python.org/downloads/)，勾选 Add to PATH）：
+
+```
+1. 双击「一键安装环境.bat」  ← 自动建环境 + 装依赖 + 下载模型（980MB）
+2. 双击「ZhaJinWenQianCake.bat」
+```
+
+两个 bat 都可以反复双击：装过的步骤自动跳过，断点续传。
+生成式三件套（AI 布景等，可选）见 [GENERATIVE.md](GENERATIVE.md)。
 
 ## 背景消除（纯色背景）
 

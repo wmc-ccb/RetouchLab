@@ -17,17 +17,18 @@ rem ============================================================
 set "ROOT=%~dp0"
 cd /d "%ROOT%"
 
-rem ---- 找 Python ----
+rem ---- 找 Python（优先「一键安装环境.bat」建好的 .venv）----
 set "PY="
-if exist "%ROOT%python_embed\python.exe" set "PY=%ROOT%python_embed\python.exe"
+if exist "%ROOT%.venv\Scripts\python.exe" set "PY=%ROOT%.venv\Scripts\python.exe"
+if not defined PY if exist "%ROOT%python_embed\python.exe" set "PY=%ROOT%python_embed\python.exe"
 if not defined PY if exist "%LOCALAPPDATA%\Programs\Python\Python313\python.exe" set "PY=%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
 if not defined PY (
   where python >nul 2>nul && set "PY=python"
 )
 if not defined PY (
   echo.
-  echo  没有找到 Python。请安装 Python 3.11-3.13 后再运行，
-  echo  或把便携版解压到 python_embed\ 目录下。
+  echo  没有找到 Python。请先双击「一键安装环境.bat」，
+  echo  它会自动搞定一切（需要已安装 Python 3.11-3.13）。
   echo.
   pause
   exit /b 1
@@ -35,7 +36,7 @@ if not defined PY (
 
 echo.
 echo   正在启动 ZhaJinWenQianCake ...
-echo   （第一次启动要读模型，需要几秒钟，浏览器会自动打开）
+echo   （首次启动要读模型，需要十几秒）
 echo.
 
 "%PY%" -X utf8 "%ROOT%tools\launch.py" %*

@@ -1,0 +1,67 @@
+{
+ "unit": "zhajinwenqiancake-models",
+ "release_tag": "models-v1",
+ "base_url": "https://github.com/wmc-ccb/ZhaJinWenQianCake/releases/download/models-v1",
+ "files": [
+  {
+   "path": "face_detection_yunet_2023mar.onnx",
+   "size": 232589,
+   "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+  },
+  {
+   "path": "2d106det.onnx",
+   "size": 5030888,
+   "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+  },
+  {
+   "path": "faceparsing.safetensors",
+   "size": 338580732,
+   "sha256": "c2bec795a8c243db71bd95be538fd62559003566466c71237e45c99b920f4b62"
+  },
+  {
+   "path": "faceparsing/config.json",
+   "size": 1689,
+   "sha256": "01d82e818569beda6aec804642e34ce187bed43326337d52ce370ff015964d68"
+  },
+  {
+   "path": "faceparsing/preprocessor_config.json",
+   "size": 374,
+   "sha256": "e5a25d8fc054bf780be930e161b47d188bec1b0bf0a44fd5fdfb3f3312c0be0b"
+  },
+  {
+   "path": "lama_fp32.onnx",
+   "size": 208044816,
+   "sha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6"
+  },
+  {
+   "path": "modnet.onnx",
+   "size": 25888640,
+   "sha256": "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9"
+  },
+  {
+   "path": "selfie_multiclass_256x256.tflite",
+   "size": 16371837,
+   "sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0"
+  },
+  {
+   "path": "RealESRGAN_x4plus.pth",
+   "size": 67040989,
+   "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1"
+  },
+  {
+   "path": "clip_image_encoder.onnx",
+   "size": 351483409,
+   "sha256": "fe6ed069ad70b71b1fc6c029902cc6214b2a52355b9e4523772de4f68e1e8f3d"
+  },
+  {
+   "path": "denoise.pt",
+   "size": 9621142,
+   "sha256": "8302f9717d6f40ae39b280bcf9813111fb54c04cce53e076b5dd4de0d2220880"
+  },
+  {
+   "path": "pose_landmarker_lite.task",
+   "size": 5777746,
+   "sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a"
+  }
+ ]
+}
