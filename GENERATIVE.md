@@ -1,6 +1,6 @@
 # 生成式组件（可选）安装指南
 
-RetouchLab 的三个 AI 功能——**AI 布景**、**创成式填充**、**道具修复**——
+ZhaJinWenQianCake 的三个 AI 功能——**AI 布景**、**创成式填充**、**道具修复**——
 不随主程序发行。它们需要一个外挂的 ComfyUI 服务（默认
 `http://127.0.0.1:8388`）和两个模型文件，合计约 13 GB 下载量。
 对不用这三个功能的用户，主程序完全不受影响。
@@ -20,7 +20,7 @@ RetouchLab 的三个 AI 功能——**AI 布景**、**创成式填充**、**道�
 ## 首次安装（一次性）
 
 ```powershell
-cd C:\Users\Rana\RetouchLab     # 或安装目录
+cd C:\Users\Rana\ZhaJinWenQianCake     # 或安装目录
 python tools\install_generative.py install
 ```
 

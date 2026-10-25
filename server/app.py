@@ -1,4 +1,4 @@
-"""RetouchLab HTTP API.
+"""ZhaJinWenQianCake HTTP API.
 
 Endpoints
 ---------
@@ -88,7 +88,7 @@ def _read_build() -> str:
 
 APP_BUILD = _read_build()
 
-app = FastAPI(title="RetouchLab", version=APP_VERSION)
+app = FastAPI(title="ZhaJinWenQianCake", version=APP_VERSION)
 
 # ---- 访问口令（公网隧道必须开）
 # 环境变量 RETOUCHLAB_PASSWD 设置后，所有请求都要带凭证
@@ -99,7 +99,7 @@ _PASSWD = os.environ.get("RETOUCHLAB_PASSWD", "").strip()
 
 _PASSWD_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RetouchLab · 需要访问口令</title>
+<title>炸金文谦蛋糕 · 需要访问口令</title>
 <style>body{margin:0;background:#111;color:#ddd;font:15px/1.7 system-ui,"Microsoft YaHei";display:flex;align-items:center;justify-content:center;min-height:100vh}.card{max-width:460px;padding:28px 30px;background:#1b1b1b;border:1px solid #2c2c2c;border-radius:12px}h1{font-size:18px;margin:0 0 14px;color:#e8b341}p{margin:8px 0}code{background:#000;padding:1px 6px;border-radius:4px;color:#7fd1a8}.tip{color:#8b8b8b;font-size:13px;margin-top:16px;border-top:1px solid #2c2c2c;padding-top:14px}</style>
 </head><body><div class="card"><h1>需要访问口令</h1>
 <p>这个地址开启了访问保护。浏览器通常会弹出登录框：</p>
@@ -157,7 +157,7 @@ async def _passwd_gate(request, call_next):
         if not ok:
             # 浏览器导航请求返回提示页（裸 JSON 在手机上看起来像
             # "报错"）；API 调用仍回 JSON，程序好判断。
-            headers = {"WWW-Authenticate": 'Basic realm="RetouchLab"'}
+            headers = {"WWW-Authenticate": 'Basic realm="ZhaJinWenQianCake"'}
             wants_html = (
                 "text/html" in request.headers.get("accept", "")
                 or request.url.path == "/")
@@ -477,7 +477,7 @@ def _get_session(sid: str) -> dict:
 def index():
     path = os.path.join(WEB_DIR, "index.html")
     if not os.path.exists(path):
-        return HTMLResponse("<h1>RetouchLab</h1><p>web/index.html missing</p>", 500)
+        return HTMLResponse("<h1>ZhaJinWenQianCake</h1><p>web/index.html missing</p>", 500)
     with open(path, "r", encoding="utf-8") as fh:
         return HTMLResponse(fh.read())
 
@@ -916,13 +916,13 @@ def version():
     返回 404，前端把它当「检查不可用」静默处理，绝不能弹错打扰用户。
     """
     return {
-        "name": "RetouchLab",
+        "name": "炸金文谦蛋糕",
         "version": APP_VERSION,
         "build": APP_BUILD,
         "frozen": bool(getattr(sys, "frozen", False)),
         "python": sys.version.split()[0],
         # 公开仓库后更新检查才会真正生效；换分发渠道时改这里。
-        "update_url": ("https://api.github.com/repos/wmc-ccb/RetouchLab"
+        "update_url": ("https://api.github.com/repos/wmc-ccb/ZhaJinWenQianCake"
                        "/releases/latest"),
     }
 

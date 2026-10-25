@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 rem ============================================================
-rem  RetouchLab 启动（局域网 + 公网）
+rem  ZhaJinWenQianCake 启动（局域网 + 公网）
 rem
 rem  局域网: 手机/平板同 Wi-Fi 打开  http://192.168.5.6:8765
 rem  公网:   http://frp2.ccszxc.xin:64649  （隧道跑在 NAS 上，
@@ -13,11 +13,11 @@ rem  例如 set RETOUCHLAB_PASSWD=retouch2026
 rem ============================================================
 
 set PYTHON=C:\Users\Rana\AppData\Local\Programs\Python\Python313\python.exe
-set ROOT=C:\Users\Rana\RetouchLab
+set ROOT=C:\Users\Rana\ZhaJinWenQianCake
 
 echo.
 echo  ============================================================
-echo   RetouchLab
+echo   ZhaJinWenQianCake
 echo   ------------------------------------------------------------
 echo   本机:     http://127.0.0.1:8765
 echo   局域网:   http://192.168.5.6:8765

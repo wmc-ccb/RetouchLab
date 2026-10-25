@@ -11,7 +11,7 @@ import io
 import os
 import re
 
-ROOT = r"C:\Users\Rana\RetouchLab"
+ROOT = r"C:\Users\Rana\ZhaJinWenQianCake"
 ENG = os.path.join(ROOT, "engine")
 
 # 匹配 here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

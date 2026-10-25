@@ -1,4 +1,4 @@
-"""RetouchLab engine package.
+"""ZhaJinWenQianCake engine package.
 
 A from-scratch portrait retouching engine whose parameter vocabulary is
 modelled on the control set recovered by static analysis of a commercial

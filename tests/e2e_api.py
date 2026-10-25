@@ -20,7 +20,7 @@ def post_json(path, obj):
 
 
 def post_file(path, filepath):
-    boundary = "----RetouchLabBoundary"
+    boundary = "----ZhaJinWenQianCakeBoundary"
     name = os.path.basename(filepath)
     with open(filepath, "rb") as fh:
         content = fh.read()

@@ -9,10 +9,10 @@
       <root>/web/index.html
 
     PyInstaller onedir
-      <dist>/RetouchLab/RetouchLab.exe
-      <dist>/RetouchLab/_internal/engine/...   (打包进去的代码)
-      <dist>/RetouchLab/models/...              (运行时目录，可写)
-      <dist>/RetouchLab/web/...                 (运行时目录，可写)
+      <dist>/ZhaJinWenQianCake/ZhaJinWenQianCake.exe
+      <dist>/ZhaJinWenQianCake/_internal/engine/...   (打包进去的代码)
+      <dist>/ZhaJinWenQianCake/models/...              (运行时目录，可写)
+      <dist>/ZhaJinWenQianCake/web/...                 (运行时目录，可写)
 
 所以**模型和 web 资源一律放在 exe 旁边的可写目录**（不要打进 _internal），
 理由：

@@ -3,7 +3,7 @@
 import os
 import re
 
-ROOT = r"C:\Users\Rana\RetouchLab"
+ROOT = r"C:\Users\Rana\ZhaJinWenQianCake"
 
 print("=== 代码里的绝对路径 ===")
 pat = re.compile(r"(['\"])([A-Za-z]:[\\/][^'\"]{3,})\1")

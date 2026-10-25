@@ -226,7 +226,7 @@ def fill(img: np.ndarray, mask: np.ndarray,
     `mask` is float32 [0,1]; values above 0.5 are replaced and its soft edge
     feathers the paste. Frames are downscaled to the model's training scale
     for generation (sd15: 768 long edge; sdxl: 1024) and the result is
-    upscaled back — a pass through the RetouchLab superres model can lift
+    upscaled back — a pass through the ZhaJinWenQianCake superres model can lift
     the generated region further when needed.
     `model`: "sd15"（快，~10s）或 "sdxl"（质量，~30-60s，纹理细节明显更好）。
     Returns (composited image, info).

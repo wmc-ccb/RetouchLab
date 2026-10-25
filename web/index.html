@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>RetouchLab — 人像精修引擎</title>
+<title>炸金文谦蛋糕 — 人像精修引擎</title>
 <style>
   /* ============================================================
      设计令牌：像素蛋糕桌面版的视觉语言（纯黑 + 金色强调），
@@ -553,7 +553,7 @@
 <body>
 <div id="app">
   <div id="topbar">
-    <div class="title">Retouch<span>Lab</span></div>
+    <div class="title">炸金文谦蛋糕<span>Lab</span></div>
     <button class="tbtn" id="btnMenu" title="工具"><span class="ico">⚙</span></button>
     <button class="tbtn" id="btnAbout" title="帮助 · 关于 · 诊断"><span class="ico">?</span></button>
     <!-- 三模块切换：图库(挑图/批量) → 精修(逐张调) → 创意(生成式) -->
@@ -5781,7 +5781,7 @@ async function saveFull() {
       // 用户数据目录里选的位置才是真实意图——这里退化为"输出根目录 +
       // 文件名"，并提示用户可在资源管理器里移动。真正的全路径要靠
       // 传统输入框路径，两种方式并存。
-      path = 'C:\\Users\\Rana\\RetouchLab\\out\\' + handle.name;
+      path = 'C:\\Users\\Rana\\ZhaJinWenQianCake\\out\\' + handle.name;
     } catch (e) {
       if (e && e.name === 'AbortError') return;   // 用户取消
       path = null;                                 // API 不可用 → 降级
@@ -5789,7 +5789,7 @@ async function saveFull() {
   }
   if (!path) {
     path = prompt('保存到（完整路径）：',
-      'C:\\\\Users\\\\Rana\\\\RetouchLab\\\\out\\\\retouched.jpg');
+      'C:\\\\Users\\\\Rana\\\\ZhaJinWenQianCake\\\\out\\\\retouched.jpg');
     if (!path) return;
   }
   setBusy(true);
@@ -7109,7 +7109,7 @@ $('btnAuto').onclick = autoFix;
 $('btnUpscale').onclick = async () => {
   if (!S.session) return;
   const path = prompt('超清结果保存到（完整路径）：',
-    'C:\\\\Users\\\\Rana\\\\RetouchLab\\\\out\\\\upscaled_4x.jpg');
+    'C:\\\\Users\\\\Rana\\\\ZhaJinWenQianCake\\\\out\\\\upscaled_4x.jpg');
   if (!path) return;
   setBusy(true);
   try {
@@ -7312,7 +7312,7 @@ bindPresetTabs();
     + S.groups.length + ' 个分类');
   // 版本写进状态行与启动日志：排障时第一句就是"你什么版本"
   fetch('/api/version').then(r => r.json()).then(v => {
-    log('RetouchLab v' + v.version + ' (build ' + v.build + ')');
+    log('ZhaJinWenQianCake v' + v.version + ' (build ' + v.build + ')');
   }).catch(() => {});
   showWelcomeOnce();
 }
@@ -7371,7 +7371,7 @@ const ABOUT = {
   reportText() {
     const L = [];
     const v = ABOUT.version || {};
-    L.push('RetouchLab 诊断报告  ' + new Date().toLocaleString());
+    L.push('ZhaJinWenQianCake 诊断报告  ' + new Date().toLocaleString());
     L.push('版本: ' + (v.version || '?') + ' (build ' + (v.build || '?') + ')');
     const d = ABOUT.diag || {};
     if (Object.keys(d).length) {
@@ -7427,7 +7427,7 @@ const ABOUT = {
             (d.gpu_error || '').slice(0, 60) : '…');
       const errs = ((ABOUT.errors || {}).errors) || [];
       card.innerHTML =
-        '<h2>RetouchLab</h2>' +
+        '<h2>ZhaJinWenQianCake</h2>' +
         '<div class="kv">' +
           '<span>版本</span><b>' + (v.version || '…') + '</b>' +
           '<span>构建</span><b>' + (v.build || '…') + '</b>' +
@@ -7510,7 +7510,7 @@ function showWelcomeOnce() {
   const w = document.createElement('div');
   w.id = 'welcome';
   w.innerHTML =
-    '<h2>欢迎使用 RetouchLab</h2>' +
+    '<h2>欢迎使用 炸金文谦蛋糕</h2>' +
     '<ol>' +
       '<li><b>导入照片</b> — 拖进窗口或点「打开」</li>' +
       '<li><b>右侧滑杆</b>调光影色彩</li>' +

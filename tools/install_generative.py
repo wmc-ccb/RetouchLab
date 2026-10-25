@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """生成式三件套（AI 布景 / 创成式填充 / 道具修复）的一键安装与启动。
 
-RetouchLab 本体不含扩散模型：这三样功能跑在外挂 ComfyUI（默认
+ZhaJinWenQianCake 本体不含扩散模型：这三样功能跑在外挂 ComfyUI（默认
 http://127.0.0.1:8388）上，需要两个模型文件：
 
     checkpoints/sd15_inpaint.ckpt                        (~2.0 GB)
@@ -147,7 +147,7 @@ def cmd_check(args):
                                   size, path if ok else "→ install 补齐"))
     if comfy_running():
         print("[OK]      服务已在 %s 应答且模型注册" % BASE)
-        print("\n全部就绪：RetouchLab 的 AI 布景 / 创成式填充 / 道具修复可用。")
+        print("\n全部就绪：ZhaJinWenQianCake 的 AI 布景 / 创成式填充 / 道具修复可用。")
         return 0
     print("[未启动]  %s 无应答" % BASE)
     print("          → python tools/install_generative.py start")
@@ -186,7 +186,7 @@ def cmd_start(args):
         if comfy_running():
             print("[OK] 服务就绪: %s（日志: %s）"
                   % (BASE, os.path.join(d, "retouchlab_comfyui.log")))
-            print("回到 RetouchLab 刷新即可使用生成式三件套。")
+            print("回到 ZhaJinWenQianCake 刷新即可使用生成式三件套。")
             return 0
         if proc.poll() is not None:
             break

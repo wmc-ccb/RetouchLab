@@ -1,4 +1,4 @@
-# RetouchLab
+# ZhaJinWenQianCake
 
 **自主研发的本地人像修图项目**：人像精修引擎 + 桌面应用。
 全部代码、模型选型与素材从零实现与整理，不含任何第三方商业产品的
@@ -701,7 +701,7 @@ python -m uvicorn server.app:app --host 0.0.0.0 --port 8765
 **功能清单与参数体系**（调色项、美肤项、美型项、工作流结构）。那份分析给了我一份
 "需求规格"。
 
-RetouchLab 就是照着这份规格、用公开的图像处理算法与公开模型重新实现的一套引擎：
+ZhaJinWenQianCake 就是照着这份规格、用公开的图像处理算法与公开模型重新实现的一套引擎：
 
 - 覆盖同样的功能面：光影、存在感、白平衡、美肤、五官、美型、身形、细节、镜头、
   颗粒、背景、分离调色、局部调整、CMYK 色轮、灰点白平衡、**配方引擎**、HSL、**RAW 解码**
@@ -788,8 +788,8 @@ CLIP（按需加载）仅用于挑图查重，首次约 67s，之后 4 张 307ms
 
 | 用途 | 入口 |
 |---|---|
-| 开发/自用 | 双击 `RetouchLab.bat`（用本机 Python） |
-| 发行 | `dist\RetouchLab\启动.bat`（自带解释器和依赖） |
+| 开发/自用 | 双击 `ZhaJinWenQianCake.bat`（用本机 Python） |
+| 发行 | `dist\ZhaJinWenQianCake\启动.bat`（自带解释器和依赖） |
 
 两者跑的是同一个 `tools/launch.py`，行为一致：单实例检查、自动挑端口、
 等服务就绪再开浏览器、日志写 `out/launcher.log`。
@@ -798,20 +798,20 @@ CLIP（按需加载）仅用于挑图查重，首次约 67s，之后 4 张 307ms
 
 ```powershell
 python -m pip install pyinstaller
-python -m PyInstaller RetouchLab.spec --noconfirm --clean
+python -m PyInstaller ZhaJinWenQianCake.spec --noconfirm --clean
 python tools/assemble_dist.py          # 把 models/ web/ 摆到 exe 旁边
 ```
 
-产物：`dist/RetouchLab/`，约 **6.45 GB**（torch CUDA 库 4.0GB + 模型 1.3GB
+产物：`dist/ZhaJinWenQianCake/`，约 **6.45 GB**（torch CUDA 库 4.0GB + 模型 1.3GB
 + onnxruntime 0.7GB + 其余）。
 
 ### 目录约定（`engine/paths.py`）
 
-打包后 exe 在 `dist/RetouchLab/`，**模型和 web 不打进 `_internal`**：
+打包后 exe 在 `dist/ZhaJinWenQianCake/`，**模型和 web 不打进 `_internal`**：
 
 ```
-dist/RetouchLab/
-    RetouchLab.exe
+dist/ZhaJinWenQianCake/
+    ZhaJinWenQianCake.exe
     _internal/          <- PyInstaller 的代码与依赖
     models/             <- 可替换、可增补
     web/                <- 前端页面
@@ -876,7 +876,7 @@ numpy/cv2/requests 做 mask 合成与 HTTP 调用，推理在 ComfyUI 那侧。
 ```powershell
 # 依赖：Python 3.13 + numpy opencv-python scipy fastapi uvicorn rawpy
 #       + onnxruntime-gpu mediapipe transformers torch（AI 功能）
-cd C:\Users\Rana\RetouchLab
+cd C:\Users\Rana\ZhaJinWenQianCake
 python -m uvicorn server.app:app --host 127.0.0.1 --port 8765
 ```
 

@@ -131,10 +131,10 @@ VSVersionInfo(
     OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)
   ),
   kids=[StringFileInfo([StringTable('080404b0', [
-    StringStruct('CompanyName', 'RetouchLab'),
-    StringStruct('FileDescription', 'RetouchLab 人像精修引擎'),
+    StringStruct('CompanyName', '炸金文谦蛋糕'),
+    StringStruct('FileDescription', '炸金文谦蛋糕 人像精修引擎'),
     StringStruct('FileVersion', '{v}'),
-    StringStruct('ProductName', 'RetouchLab'),
+    StringStruct('ProductName', '炸金文谦蛋糕'),
     StringStruct('ProductVersion', '{v}'),
   ])]), VarFileInfo([VarStruct('Translation', [2052, 1200])])]
 )
@@ -145,7 +145,7 @@ exe = EXE(                                     # noqa: F821
     a.scripts,
     [],
     exclude_binaries=True,
-    name="RetouchLab",
+    name="ZhaJinWenQianCake",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -156,7 +156,7 @@ exe = EXE(                                     # noqa: F821
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=os.path.join(HERE, "assets", "retouchlab.ico"),
+    icon=os.path.join(HERE, "assets", "zhajinwenqian.ico"),
     version=_vi_file,
 )
 
@@ -167,5 +167,5 @@ coll = COLLECT(                                # noqa: F821
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="RetouchLab",
+    name="ZhaJinWenQianCake",
 )

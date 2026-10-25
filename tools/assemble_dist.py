@@ -4,8 +4,8 @@
 PyInstaller 只负责「代码 + 依赖」，运行时资源按 engine/paths.py 的约定
 放在 exe 同级的可写目录里。本脚本做这些事：
 
-    dist/RetouchLab/
-        RetouchLab.exe           <- PyInstaller 产物
+    dist/ZhaJinWenQianCake/
+        ZhaJinWenQianCake.exe           <- PyInstaller 产物
         _internal/               <- PyInstaller 内部依赖
         models/                  <- 从项目里拷（0.95GB）
         web/                     <- 从项目里拷
@@ -24,7 +24,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DIST = os.path.join(ROOT, "dist", "RetouchLab")
+DIST = os.path.join(ROOT, "dist", "ZhaJinWenQianCake")
 
 
 def read_version():
@@ -73,7 +73,7 @@ def sign_dist():
     if not tool:
         print("  代码签名：找不到 signtool.exe（需要 Windows SDK），跳过")
         return False
-    exe = os.path.join(DIST, "RetouchLab.exe")
+    exe = os.path.join(DIST, "ZhaJinWenQianCake.exe")
     cmd = [tool, "sign", "/fd", "SHA256", "/tr",
            "http://timestamp.digicert.com", "/td", "SHA256",
            "/f", pfx]
@@ -116,14 +116,14 @@ def copytree(src, dst, skip=()):
 
 BAT = """@echo off
 chcp 65001 >nul
-title RetouchLab
+title ZhaJinWenQianCake
 rem 路径含空格/中文也能用：全程用 %~dp0 并加引号
 cd /d "%~dp0"
 
-if not exist "%~dp0RetouchLab.exe" (
+if not exist "%~dp0ZhaJinWenQianCake.exe" (
   echo.
-  echo   找不到 RetouchLab.exe。
-  echo   请确认这个 bat 和 RetouchLab.exe 在同一个文件夹里。
+  echo   找不到 ZhaJinWenQianCake.exe。
+  echo   请确认这个 bat 和 ZhaJinWenQianCake.exe 在同一个文件夹里。
   echo.
   pause
   exit /b 1
@@ -131,7 +131,7 @@ if not exist "%~dp0RetouchLab.exe" (
 
 echo.
 echo   ============================================
-echo    RetouchLab   人像精修引擎
+echo    ZhaJinWenQianCake   人像精修引擎
 echo   ============================================
 echo.
 echo   正在启动，应用窗口会自动打开...
@@ -139,7 +139,7 @@ echo   第一次启动要读模型，需要十几秒，请稍等。
 echo   关闭应用窗口即退出。
 echo.
 
-"%~dp0RetouchLab.exe" %*
+"%~dp0ZhaJinWenQianCake.exe" %*
 set RC=%ERRORLEVEL%
 
 echo.
@@ -154,11 +154,11 @@ if not "%RC%"=="0" (
 pause
 """
 
-README = """RetouchLab 使用说明
+README = """ZhaJinWenQianCake 使用说明
 =========================
 
 【启动】
-  双击 RetouchLab.exe —— 会打开独立的应用窗口（不是浏览器）。
+  双击 ZhaJinWenQianCake.exe —— 会打开独立的应用窗口（不是浏览器）。
 
   第一次启动要读取模型，先显示启动页十几秒，属正常现象。
   关闭应用窗口 = 退出程序。
@@ -183,7 +183,7 @@ README = """RetouchLab 使用说明
 
 【局域网 / 手机访问】
   建一个快捷方式，目标后面加上 --lan（注意前面有空格）：
-      ...\\RetouchLab.exe --lan
+      ...\\ZhaJinWenQianCake.exe --lan
   然后手机连同一个 Wi-Fi，浏览器访问启动日志(out\\launcher.log)
   里的局域网地址。电脑上仍是应用窗口，不受影响。
 
@@ -208,7 +208,7 @@ README = """RetouchLab 使用说明
 def main():
     if not os.path.isdir(DIST):
         print("找不到 %s" % DIST)
-        print("请先运行：pyinstaller RetouchLab.spec --noconfirm")
+        print("请先运行：pyinstaller ZhaJinWenQianCake.spec --noconfirm")
         return 1
 
     print("组装发行目录:", DIST)

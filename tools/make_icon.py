@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""生成 RetouchLab 应用图标（assets/retouchlab.ico）。
+"""生成 ZhaJinWenQianCake 应用图标（assets/retouchlab.ico）。
 
 深色圆角底 + 品牌金光圈 + 白色 R。纯 PIL 绘制，无外部素材。
 多尺寸（16/24/32/48/64/128/256）打包成 ico。
@@ -20,26 +20,27 @@ def draw(size):
     # 深色圆角底
     d.rounded_rectangle([0, 0, size - 1, size - 1], radius=r,
                         fill=(18, 18, 21, 255))
-    # 金色描边光圈（宽度随尺寸缩放）
+    # 金色描边光圈
     w = max(1, size // 16)
     d.rounded_rectangle([w, w, size - 1 - w, size - 1 - w], radius=r * 0.9,
                         outline=(232, 179, 65, 255), width=w)
-    # 中心 R
-    fs = int(size * 0.58)
-    font = None
-    for name in ("segoeuib.ttf", "arialbd.ttf", "arial.ttf"):
-        try:
-            font = ImageFont.truetype("C:/Windows/Fonts/" + name, fs)
-            break
-        except Exception:
-            continue
-    if font is None:
-        font = ImageFont.load_default()
-    text = "R"
-    bbox = d.textbbox((0, 0), text, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    d.text(((size - tw) / 2 - bbox[0], (size - th) / 2 - bbox[1]), text,
-           font=font, fill=(245, 220, 160, 255))
+    # 中心: 金色双层蛋糕（两层圆角横条 + 顶上烛光点）
+    cx = size / 2
+    gold = (232, 179, 65, 255)
+    gold_hi = (245, 220, 160, 255)
+    bw = size * 0.46
+    bh = size * 0.14
+    y_base = size * 0.66
+    d.rounded_rectangle([cx - bw / 2, y_base - bh, cx + bw / 2, y_base],
+                        radius=bh * 0.35, fill=gold)
+    bw2 = bw * 0.72
+    y2 = y_base - bh - size * 0.02
+    d.rounded_rectangle([cx - bw2 / 2, y2 - bh, cx + bw2 / 2, y2],
+                        radius=bh * 0.35, fill=gold_hi)
+    # 烛光
+    cr = max(1, size * 0.035)
+    d.ellipse([cx - cr, y2 - bh - size * 0.10 - cr,
+               cx + cr, y2 - bh - size * 0.10 + cr], fill=gold)
     return img
 
 

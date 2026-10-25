@@ -42,7 +42,7 @@ function main() {
         }
     }
 
-    var f = new File("C:/Users/Rana/RetouchLab/out/ps_api.txt");
+    var f = new File("C:/Users/Rana/ZhaJinWenQianCake/out/ps_api.txt");
     f.encoding = "UTF8";
     f.open("w");
     f.write(out.join("\n"));
@@ -52,7 +52,7 @@ function main() {
 try {
     main();
 } catch (e) {
-    var f2 = new File("C:/Users/Rana/RetouchLab/out/ps_api_err.txt");
+    var f2 = new File("C:/Users/Rana/ZhaJinWenQianCake/out/ps_api_err.txt");
     f2.open("w");
     f2.write(e.message + "\n" + e.line);
     f2.close();

@@ -1,13 +1,13 @@
 @echo off
 chcp 65001 >nul
-title RetouchLab 打包
+title ZhaJinWenQianCake 打包
 setlocal
 cd /d "%~dp0"
 
 rem ============================================================
 rem  一键打包：PyInstaller 出 exe + 组装运行时资源
 rem
-rem  产物在 dist\RetouchLab\ ，直接压缩发给用户即可。
+rem  产物在 dist\ZhaJinWenQianCake\ ，直接压缩发给用户即可。
 rem  前置：python -m pip install pyinstaller
 rem ============================================================
 
@@ -29,11 +29,11 @@ if errorlevel 1 (
 )
 
 echo   [2/3] PyInstaller 打包
-"%PY%" -m PyInstaller RetouchLab.spec --noconfirm --clean
+"%PY%" -m PyInstaller ZhaJinWenQianCake.spec --noconfirm --clean
 if errorlevel 1 (
   echo.
   echo   打包失败。常见原因：
-  echo     - dist\RetouchLab 里有进程在跑（先关掉）
+  echo     - dist\ZhaJinWenQianCake 里有进程在跑（先关掉）
   echo     - 磁盘空间不足（需要约 8GB）
   echo.
   pause & exit /b 1
@@ -47,7 +47,7 @@ echo.
 echo   ============================================
 echo    打包完成
 echo   ============================================
-echo    产物: %~dp0dist\RetouchLab\
+echo    产物: %~dp0dist\ZhaJinWenQianCake\
 echo    发给用户后，双击里面的「启动.bat」即可。
 echo.
 pause

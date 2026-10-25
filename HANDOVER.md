@@ -1,4 +1,4 @@
-# RetouchLab 交接文档
+# ZhaJinWenQianCake 交接文档
 
 > 写于 2026-10-24。给接手的人（或未来的我）用。
 > 每个数字都是实测的，不是估的。凡是我踩过的坑，都写了为什么。
@@ -35,9 +35,9 @@
 ### 开发用
 
 ```powershell
-cd C:\Users\Rana\RetouchLab
+cd C:\Users\Rana\ZhaJinWenQianCake
 python -m pip install -r requirements.txt
-python tools/launch.py            # 或双击 RetouchLab.bat
+python tools/launch.py            # 或双击 ZhaJinWenQianCake.bat
 ```
 
 浏览器会自动打开 `http://127.0.0.1:8765`。
@@ -45,7 +45,7 @@ python tools/launch.py            # 或双击 RetouchLab.bat
 ### 发行用（给用户）
 
 ```
-dist\RetouchLab\启动.bat          ← 双击这个
+dist\ZhaJinWenQianCake\启动.bat          ← 双击这个
 ```
 
 产物 6.46 GB，自带 Python 和全部依赖，用户机器不需要装任何东西。
@@ -55,11 +55,11 @@ dist\RetouchLab\启动.bat          ← 双击这个
 双击 `build_app.bat`，或者：
 
 ```powershell
-python -m PyInstaller RetouchLab.spec --noconfirm --clean
+python -m PyInstaller ZhaJinWenQianCake.spec --noconfirm --clean
 python tools/assemble_dist.py
 ```
 
-约 4-5 分钟。**打包前必须关掉所有正在跑的 RetouchLab 实例**，
+约 4-5 分钟。**打包前必须关掉所有正在跑的 ZhaJinWenQianCake 实例**，
 否则文件被占用会报 `PermissionError`。
 
 ---
@@ -70,10 +70,10 @@ python tools/assemble_dist.py
 
 ```
 源码运行                         打包运行
-<root>/engine/paths.py           dist/RetouchLab/_internal/engine/...
-<root>/models/                   dist/RetouchLab/models/       ← exe 旁边
-<root>/web/                      dist/RetouchLab/web/
-<root>/data/                     dist/RetouchLab/data/        ← 可写
+<root>/engine/paths.py           dist/ZhaJinWenQianCake/_internal/engine/...
+<root>/models/                   dist/ZhaJinWenQianCake/models/       ← exe 旁边
+<root>/web/                      dist/ZhaJinWenQianCake/web/
+<root>/data/                     dist/ZhaJinWenQianCake/data/        ← 可写
 ```
 
 **关键决策：模型和 web 不打进 `_internal`。**
@@ -155,7 +155,7 @@ python tools/export_clip_onnx.py
 
 双击 → 这个脚本 → uvicorn。它负责 5 件事：
 
-1. **单实例检查**：端口上如果已经是 RetouchLab，直接开浏览器不重复起
+1. **单实例检查**：端口上如果已经是 ZhaJinWenQianCake，直接开浏览器不重复起
 2. **自动挑端口**：8765 被别的程序占了就往后找（8766-8784），全被占就让系统随机分配
 3. **等就绪再开浏览器**：轮询 `/api/health`，通了才 `webbrowser.open`
 4. **日志**：`out/launcher.log`
@@ -164,11 +164,11 @@ python tools/export_clip_onnx.py
 ### 这里踩过一个会让用户彻底懵的 bug
 
 `is_our_service()` 原来只检查 `{"ok": true, "sessions": ...}`。
-但任何健康检查都可能返回类似结构，于是一个**不是 RetouchLab 的服务**
+但任何健康检查都可能返回类似结构，于是一个**不是 ZhaJinWenQianCake 的服务**
 被误判成"自己"，启动器就去"复用"它——用户双击后**既不启服务也不报错**，
 只看到浏览器打开一个陌生页面。
 
-现在改成同时要求 3 个 RetouchLab 特有字段（`ok` / `max_sessions` / `face_model`），
+现在改成同时要求 3 个 ZhaJinWenQianCake 特有字段（`ok` / `max_sessions` / `face_model`），
 并且 `pick_port()` 返回 `(port, reusable)` 二元组，逻辑显式化。
 
 ---
@@ -203,7 +203,7 @@ Get-ChildItem tests\verify_*.py | ForEach-Object {
 ```powershell
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" `
   --remote-debugging-port=9223 --remote-allow-origins=* `
-  --user-data-dir=C:\Users\Rana\RetouchLab\out\_cdp --no-first-run `
+  --user-data-dir=C:\Users\Rana\ZhaJinWenQianCake\out\_cdp --no-first-run `
   http://127.0.0.1:8765/
 ```
 
@@ -297,7 +297,7 @@ UI 上这三个工具会提示如何启动。
 ### 这轮抓到的环境大坑（比 bug 更值钱）
 
 - **8765 上跑的可能是打包版**：跑测试前 `netstat -ano | findstr 8765`
-  确认监听进程是 `python.exe`（源码）而不是 `RetouchLab.exe`。
+  确认监听进程是 `python.exe`（源码）而不是 `ZhaJinWenQianCake.exe`。
   本轮 42/72 的初始失败里一大半源于此。
 - **verify_packaged_ui.py 曾劫持 tabs[0]**：它把第一个标签页导航到
   8766 测完不还原，同批其它 UI 测试全部"浏览器未连接"。已改为：
@@ -395,7 +395,7 @@ cv2 崩溃的同一根因**（当时以为是打包环境问题，其实是并�
 
 ### 桌面应用化（2026-10-25 凌晨，用户要求"傻瓜式 + 不要网页形式"）
 
-**双击 RetouchLab.exe → 原生应用窗口**（pywebview 6.2.1 / WebView2，
+**双击 ZhaJinWenQianCake.exe → 原生应用窗口**（pywebview 6.2.1 / WebView2，
 Win10/11 系统自带运行时），没有黑控制台、不开浏览器：
 
 - 窗口先显示加载页（品牌色 + "正在启动引擎"），服务就绪后无缝载入
@@ -446,7 +446,7 @@ UI 回归测试仍然打 HTTP 服务（8765），窗口化不影响测试体系�
   又卡在 GCM 凭据弹窗（无终端可弹）。所以本地 main 与 origin/main
   是两棵内容相同的历史，**以远端为备份基准**，日常增量备份继续跑
   git_backup_push.py（它会自动把父提交解析到远端头上）。
-- 打包版与源码版并跑测试时：打包版必须 `RetouchLab.exe --port 8766`
+- 打包版与源码版并跑测试时：打包版必须 `ZhaJinWenQianCake.exe --port 8766`
   显式换端口，否则启动器看到 8765 有"自己人"就直接复用退出。
 - 跑批判定口径：`verify_raw_api` 的 RESULT 行是描述式（"RESULT: RAW
   through the API works end to end"），按退出码/无 FAILED 判，别只
@@ -460,8 +460,8 @@ UI 回归测试仍然打 HTTP 服务（8765），窗口化不影响测试体系�
 - ✅ `requirements.txt` + `requirements-generative.txt`（版本锁定，之前没有）
 - ✅ `engine/paths.py`：统一路径解析，支持源码/打包双模式
 - ✅ `engine/cliponnx.py`：ONNX CLIP，挑图不再需要 transformers+torch
-- ✅ `tools/launch.py` + `RetouchLab.bat`：双击启动、单实例、自动端口、自动开浏览器
-- ✅ `RetouchLab.spec` + `tools/assemble_dist.py` + `build_app.bat`：完整打包链
+- ✅ `tools/launch.py` + `ZhaJinWenQianCake.bat`：双击启动、单实例、自动端口、自动开浏览器
+- ✅ `ZhaJinWenQianCake.spec` + `tools/assemble_dist.py` + `build_app.bat`：完整打包链
 - ✅ `/api/diagnose` 端点：发行版可自诊断
 - ✅ 全局异常处理器：未捕获异常写 `out/error.log`
 - ✅ `/api/health` 提速：2030ms → 6ms（不再每次探测 ComfyUI，加 30 秒缓存）
@@ -504,7 +504,7 @@ UI 回归测试仍然打 HTTP 服务（8765），窗口化不影响测试体系�
 | `engine/cliponnx.py` | ONNX CLIP 图像塔（挑图用） |
 | `tools/launch.py` | 启动器（单实例/端口/浏览器） |
 | `tools/assemble_dist.py` | 打包后组装（models/web/bat/README） |
-| `RetouchLab.spec` | PyInstaller 配置（含排除清单和原因） |
+| `ZhaJinWenQianCake.spec` | PyInstaller 配置（含排除清单和原因） |
 | `build_app.bat` | 一键打包 |
 | `server/app.py` | 全部 API（3582 行，唯一的后端文件） |
 | `web/index.html` | 全部前端（7152 行，单文件） |

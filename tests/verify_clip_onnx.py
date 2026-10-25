@@ -10,7 +10,7 @@ import sys
 
 import numpy as np
 
-ROOT = r"C:\Users\Rana\RetouchLab"
+ROOT = r"C:\Users\Rana\ZhaJinWenQianCake"
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 

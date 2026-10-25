@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title RetouchLab
+title ZhaJinWenQianCake
 setlocal
 
 rem ============================================================
-rem  RetouchLab 启动（双击这个文件即可）
+rem  ZhaJinWenQianCake 启动（双击这个文件即可）
 rem
 rem  做的事：
 rem    1. 找 Python（优先用打包时记录的路径，其次 PATH 里的 python）
@@ -34,7 +34,7 @@ if not defined PY (
 )
 
 echo.
-echo   正在启动 RetouchLab ...
+echo   正在启动 ZhaJinWenQianCake ...
 echo   （第一次启动要读模型，需要几秒钟，浏览器会自动打开）
 echo.
 

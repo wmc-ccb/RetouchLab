@@ -15,7 +15,7 @@ import websocket
 CDP = "http://127.0.0.1:9223"
 PORT = 8766
 B = "http://127.0.0.1:%d" % PORT
-OUT = r"C:\Users\Rana\RetouchLab\out"
+OUT = r"C:\Users\Rana\ZhaJinWenQianCake\out"
 FAIL = []
 
 
@@ -39,7 +39,7 @@ def main():
     try:
         requests.get(B + "/api/health", timeout=3)
     except Exception:
-        print("RESULT: SKIPPED（%s 无打包服务，先启动 dist\\RetouchLab\\启动.bat）" % B)
+        print("RESULT: SKIPPED（%s 无打包服务，先启动 dist\\ZhaJinWenQianCake\\启动.bat）" % B)
         return 0
 
     # 用自己的标签页，用完即关：源码版的 8765 标签页不能动
@@ -90,7 +90,7 @@ def main():
 
     print("\n=== 打包版界面 ===")
     title = js("document.title")
-    check("页面标题", "RetouchLab" in (title or ""), str(title))
+    check("页面标题", "ZhaJinWenQianCake" in (title or ""), str(title))
 
     rail = js("document.querySelectorAll('#rail .rbtn').length")
     check("左栏工具按钮", (rail or 0) >= 40, "%s 个" % rail)

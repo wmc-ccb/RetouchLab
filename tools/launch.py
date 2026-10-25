@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""RetouchLab 启动器（桌面应用模式）。
+"""ZhaJinWenQianCake 启动器（桌面应用模式）。
 
 双击 exe（或 `python tools/launch.py`）的完整流程：
 
@@ -39,7 +39,7 @@ except Exception:
 LOG_DIR = os.path.join(ROOT, "out")
 LOG_PATH = os.path.join(LOG_DIR, "launcher.log")
 DEFAULT_PORT = 8765
-WINDOW_TITLE = "RetouchLab — 人像精修"
+WINDOW_TITLE = "炸金文谦蛋糕 — 人像精修"
 
 LOADING_HTML = """<!doctype html><html><head><meta charset="utf-8">
 <style>
@@ -54,7 +54,7 @@ border-radius:50%;margin-bottom:22px;animation:r 1s linear infinite}
 @keyframes r{to{transform:rotate(360deg)}}
 </style></head><body>
 <div class="spin"></div>
-<div class="logo">Retouch<span>Lab</span></div>
+<div class="logo">炸金文谦蛋糕<span>Lab</span></div>
 <div class="tip">正在启动引擎与模型，首次约 10~30 秒…</div>
 </body></html>"""
 
@@ -80,8 +80,8 @@ def fatal(msg):
         try:
             import ctypes
             ctypes.windll.user32.MessageBoxW(
-                0, "RetouchLab 启动失败：\n\n%s\n\n详情见 out\\launcher.log"
-                % msg, "RetouchLab", 0x10)
+                0, "ZhaJinWenQianCake 启动失败：\n\n%s\n\n详情见 out\\launcher.log"
+                % msg, "ZhaJinWenQianCake", 0x10)
         except Exception:
             pass
 
@@ -96,10 +96,10 @@ def port_in_use(port, host="127.0.0.1", timeout=0.4):
 
 
 def is_our_service(port):
-    """端口上跑的是不是 RetouchLab（而不是别的程序）。
+    """端口上跑的是不是 ZhaJinWenQianCake（而不是别的程序）。
 
     判据要**足够严**：只看 "ok" 字段会把任何返回 {"ok":true} 的服务
-    误认成自己。同时要求 3 个 RetouchLab 特有字段。
+    误认成自己。同时要求 3 个 ZhaJinWenQianCake 特有字段。
     """
     try:
         import json
@@ -120,7 +120,7 @@ def pick_port(preferred):
     """优先用首选端口；被别的程序占了就往后找。
 
     返回 (port, reusable)：reusable 为 True 表示该端口上已经是
-    RetouchLab 自己，调用方应直接开窗口而不是再起一个实例。
+    ZhaJinWenQianCake 自己，调用方应直接开窗口而不是再起一个实例。
     """
     if not port_in_use(preferred):
         return preferred, False
@@ -227,7 +227,7 @@ def open_browser(url, port, delay_hint=0.0):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="RetouchLab launcher")
+    ap = argparse.ArgumentParser(description="ZhaJinWenQianCake launcher")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--browser", action="store_true",
@@ -240,7 +240,7 @@ def main():
     port, reusable = pick_port(args.port)
     url = "http://127.0.0.1:%d/" % port
 
-    log("RetouchLab 启动中（Python %s）" % sys.version.split()[0])
+    log("ZhaJinWenQianCake 启动中（Python %s）" % sys.version.split()[0])
     log("目录: %s" % ROOT)
 
     # ---- 已经有实例在跑：贴一个新窗口/开浏览器，不重复起服务 ----
