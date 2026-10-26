@@ -32,6 +32,9 @@ from engine import superres as SR
 from engine import lama as LA
 
 SRC = r"C:\Users\Rana\Desktop\26cicf\d3\宫园薰\_DSC7550.jpg"
+# 本机照片不在时(如 CI/其他机器)回退到仓库自带的合成样张
+if not os.path.exists(SRC):
+    SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "samples", "synthetic_portrait.jpg")
 failures = []
 
 

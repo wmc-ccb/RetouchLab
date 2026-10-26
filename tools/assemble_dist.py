@@ -206,33 +206,58 @@ README = """ZhaJinWenQianCake 使用说明
 
 
 def main():
+    if "--mini" in sys.argv or os.environ.get("ZJWQC_MINI") == "1":
+        print("错误：--mini 已停用。实测本项目的 torch 构建（cu 轮子）在")
+        print("import 时硬加载 cudnn/cublas，拆掉任何 CUDA DLL 都会让")
+        print("torch 导入失败、超清/降噪全灭。要做 1.5GB 级 CPU 版，需用")
+        print("CPU-only torch 轮子重新构建（见 HANDOVER「发行瘦身」一节）。")
+        return 2
+    lite = "--lite" in sys.argv or os.environ.get("ZJWQC_LITE") == "1"
     if not os.path.isdir(DIST):
         print("找不到 %s" % DIST)
         print("请先运行：pyinstaller ZhaJinWenQianCake.spec --noconfirm")
         return 1
 
-    print("组装发行目录:", DIST)
+    print("组装发行目录: %s%s" % (
+        DIST, "（lite：模型改为首次启动下载）" if lite else ""))
 
     # 1) 运行时资源
     n = copytree(os.path.join(ROOT, "web"), os.path.join(DIST, "web"))
     print("  web/      %d 个文件" % n)
 
-    n = copytree(os.path.join(ROOT, "models"), os.path.join(DIST, "models"),
-                 skip=("__pycache__",))
-    print("  models/   %d 个文件" % n)
+    if lite:
+        # 瘦身版：模型不随包（省 ~1GB），清单随包，首次启动 UI 引导下载
+        os.makedirs(os.path.join(DIST, "models"), exist_ok=True)
+        shutil.copy2(os.path.join(ROOT, "tools", "models_manifest.json"),
+                     os.path.join(DIST, "models_manifest.json"))
+        print("  models/   跳过（lite 模式，清单已放 exe 旁）")
+    else:
+        n = copytree(os.path.join(ROOT, "models"),
+                     os.path.join(DIST, "models"), skip=("__pycache__",))
+        print("  models/   %d 个文件" % n)
 
     # 2) 空目录
     for d in ("data", "out"):
         os.makedirs(os.path.join(DIST, d), exist_ok=True)
     print("  data/ out/ 已建")
 
-    # 3) 启动脚本 + 说明
-    with open(os.path.join(DIST, "启动.bat"), "w",
-              encoding="utf-8-sig", newline="\r\n") as f:
-        f.write(BAT)
-    with open(os.path.join(DIST, "README-使用说明.txt"), "w",
-              encoding="utf-8-sig", newline="\r\n") as f:
-        f.write(README)
+    # 3) 启动脚本 + 说明（lite 版在 README 头部加首次初始化说明）
+    readme_text = README
+    if lite:
+        readme_text = readme_text.replace(
+            "【启动】",
+            "【首次初始化】\n"
+            "  这个安装包不含模型（为了下载更快）。第一次启动会显示\n"
+            "  「首次初始化」界面并自动联网下载约 980MB 模型，\n"
+            "  只此一次，之后完全离线使用。下载中断可点重试，已下载\n"
+            "  的部分不会重下。\n\n"
+            "【启动】", 1)
+    from pathlib import Path
+    Path(DIST, "启动.bat").write_text(BAT, encoding="utf-8-sig",
+                                      newline="\r\n")
+    Path(DIST, "README-使用说明.txt").write_text(readme_text,
+                                                  encoding="utf-8-sig",
+                                                  newline="\r\n")
     print("  启动.bat / README 已写")
 
     # 3.5) 构建戳 + 生成式安装器随包
@@ -254,7 +279,7 @@ def main():
     # 4) 可选代码签名（未配置证书时静默跳过，见 sign_dist 注释）
     sign_dist()
 
-    # 4) 体积统计
+    # 5) 体积统计
     total = 0
     for dp, _, fs in os.walk(DIST):
         for f in fs:

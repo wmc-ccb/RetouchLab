@@ -3610,6 +3610,28 @@ def ai_service_action(req: AiServiceAction):
     raise HTTPException(400, "action 必须是 start 或 stop")
 
 
+@app.get("/api/models")
+def models_status():
+    """模型安装状态（瘦发行版首次初始化的数据源）。"""
+    from engine import models_setup
+    try:
+        return JSONResponse(models_setup.status())
+    except Exception as exc:
+        return JSONResponse({"phase": "error", "error": str(exc)[:200]},
+                            status_code=500)
+
+
+@app.post("/api/models")
+def models_fetch():
+    """开始/继续下载缺失模型（后台线程），进度走 GET 轮询。"""
+    from engine import models_setup
+    try:
+        return JSONResponse(models_setup.fetch())
+    except Exception as exc:
+        return JSONResponse({"phase": "error", "error": str(exc)[:200]},
+                            status_code=500)
+
+
 # --------------------------------------------------------------------------
 # formula (recipe) engine: stored, composable, parametric edit sequences
 # --------------------------------------------------------------------------

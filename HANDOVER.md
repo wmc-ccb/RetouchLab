@@ -538,3 +538,43 @@ UI 回归测试仍然打 HTTP 服务（8765），窗口化不影响测试体系�
 - git_backup_push 的 tree SHA 注意：仓库里有中文文件名后，远端 tree
   SHA 与本地不再逐位一致（GitHub API 做了 Unicode 规范化），但
   blob 级 188/188 全部一致——验证备份要用 blob 对比，别只比 tree。
+
+
+### 三件套冲刺（2026-10-26）：发行瘦身 / 签名链验证 / CI
+
+**发行瘦身（lite 版，已交付）**
+- `engine/models_setup.py`：进程内模型下载器（清单+sha256+断点续传
+  +重试12次+逐MB进度），URL 白名单（仅 github 系）与路径穿越校验
+  （Mimosa 要求，也是真加固）。`/api/models` GET 状态 / POST 开下。
+- 前端 `#modelsBoot` 首次初始化引导层：进度条+自动开下+失败重试，
+  下载完自动消失。
+- assemble `--lite`：模型不随包（6.46→5.18GB），清单摆 exe 旁。
+- **E2E 实测**：清空模型的打包版启动 → 引导层出现并自动下载
+  980MB/12 文件（中途网络抖动靠重试闯过）→ 全模型就绪 → CPU 渲染
+  200。
+- **--mini（1.5GB 级）尝试后放弃，代码已删**：实测本项目 torch
+  （cu 轮子）在 import 时**硬加载** cudnn/cublas（torch_global_deps
+  机制），拆任何 CUDA DLL 都让 torch 导入失败（WinError 126，
+  shm.dll 报错只是表象）。要 1.5GB 版需用 CPU-only torch 轮子重建，
+  属后续工作。GPU 补丁包恢复路径倒是验证可用（拷回即 gpu_works=true）。
+
+**签名链（等证书）**
+- 自签证书端到端实测：signtool 定位 ✓、SHA256+RFC3161 时间戳签名 ✓、
+  链构建 ✓、签名者可读 ✓——唯一"不通过"是自签根不受信（预期）。
+  买真实证书（推荐 Certum 开源开发者证书 €25-70/年，README「发布」
+  有全部选项）后配 env 即零代码上线。
+
+**CI（就绪，差一个 token scope）**
+- 本地"CI 模拟"（隐藏作者照片目录）实测 18 套纯引擎测试 → **11 套
+  通过**入选 CI（clip_onnx/curves/eyes/formula/geoface/clothes/
+  landmarks/locality/psunits/skin_gate/wheel）；7 套引用本机照片路径
+  排除（其中 7 个文件的 SRC 已加 samples 回退，但部分套还引用其它
+  真人照片）。
+- `.github/workflows/ci.yml`：windows-latest + py3.13 + pip 缓存 +
+  模型缓存（按清单哈希）+ 11 套回归 + 失败上传 out/ 产物。
+- **推送被挡**：gh token 无 `workflows` scope。解法（用户跑一次）：
+  `gh auth refresh -h github.com -s workflows`（浏览器输一次性代码），
+  然后重新推送即可。
+
+**发行产物（dist/）**：full 6.46GB 与 lite 5.18GB 两个 zip（同一
+构建产出，字节校验流程同前）。steady state = full 运行于 8765。

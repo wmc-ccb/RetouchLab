@@ -10,12 +10,17 @@
 
 ## 快速开始
 
-**方式 A · 普通用户（推荐）**：到 [Releases](https://github.com/wmc-ccb/ZhaJinWenQianCake/releases) 下载打包版（含全部模型，约 6.5GB），解压后**双击 `ZhaJinWenQianCake.exe`** 即可，无需安装任何东西。
+**方式 A · 普通用户**：到 [Releases](https://github.com/wmc-ccb/ZhaJinWenQianCake/releases) 下载发行包，解压后**双击 `ZhaJinWenQianCake.exe`** 即可，无需安装任何东西。两个版本任选：
+
+| 版本 | 体积 | 适合 |
+|---|---|---|
+| **lite** | ~5.2 GB | 网速好：首次启动自动联网下载模型（980MB，带进度条和断点续传，之后永久离线） |
+| **full** | ~6.5 GB | 想一次到位：模型全部内置，解压即用 |
 
 **方式 B · 从源码跑**（需要先装 [Python 3.11-3.13](https://www.python.org/downloads/)，勾选 Add to PATH）：
 
 ```
-1. 双击「一键安装环境.bat」  ← 自动建环境 + 装依赖 + 下载模型（980MB）
+1. 双击「一键安装环境.bat」  ← 自动建环境 + 装依赖 + 下载模型
 2. 双击「ZhaJinWenQianCake.bat」
 ```
 
@@ -1174,13 +1179,20 @@ Lanczos4 在整数偏移处是精确恒等，所以：
    python tools\assemble_dist.py                      # 自动调 signtool
    ```
 
-   证书类型取舍（2026 年行情）：
-   - **OV 代码签名证书**（几百元/年）：防篡改，但 SmartScreen 仍要
-     「积累信誉」，初期照样警告。
+   证书怎么买（2026 年行情，本项目已验证签名链路端到端可用——
+   自签证书实测：signtool 签名 + 时间戳 + 链验证全部通过，只差
+   一个受信的 CA 根）：
+   - **Certum 开源开发者证书**（约 €25-70/年）：**本项目最对口**——
+     专门发给公开源码项目，费用低，签出的就是正规 OV 代码签名。
+     https://certum.eu 的 "Open Source Code Signing"。
+   - **SignPath.io 开源免费计划**：公开仓库可申请免费签名服务，
+     需要申请审核（https://signpath.io）。
+   - **Azure Trusted Signing**（$9.99/月，个人开发者可申请）：
+     微软自家服务，SmartScreen 信誉积累快。
    - **EV 代码签名证书**（硬件 USB Token，几千元/年）：SmartScreen
-     立即信任，个人开发者最省心的选择。
-   - **自签证书**（`New-SelfSignedCertificate`）：只适合内网/自用，
-     对外部用户毫无帮助，还会叠一层"未知发布者"。
+     立即信任，预算充足的最省心选择。
+   - **自签证书**：只适合验证链路（本仓库就是这么测的），对外部
+     用户毫无信任价值。
    - 没有证书时 assemble_dist 会跳过签名并提示，本地打包不受影响。
 4. 更新检查：`/api/version` 返回 `update_url`（GitHub Releases 的
    latest 接口），前端关于面板据此提示新版本。**仓库需要公开**（或把
