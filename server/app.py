@@ -245,6 +245,10 @@ def _warm_models():
 _sessions: "OrderedDict[str, dict]" = OrderedDict()
 _lock = threading.Lock()
 _pipe = RetouchPipeline()
+# 渲染缓存（/api/render）：会话+参数哈希+源版本 → 渲染结果。
+# 32 条 × ~300KB ≈ 10MB 内存，换滑杆回拖的瞬时响应。
+_RENDER_CACHE: "OrderedDict[tuple, dict]" = OrderedDict()
+_RENDER_CACHE_MAX = 32
 
 
 # --------------------------------------------------------------------------
@@ -325,6 +329,7 @@ PARAM_SPEC = [
     _p("distortion", "畸变", -100, 100, 0, "镜头"),
     _p("vignetting", "暗角", -100, 100, 0, "镜头"),
     _p("vignetting_midpoint", "暗角中点", 0, 100, 50, "镜头"),
+    _p("ca_amount", "色差", -100, 100, 0, "镜头", "正=消红边，负=消蓝边"),
     # ---- 颗粒 grain -----------------------------------------------------
     _p("grain_amount", "颗粒效果", 0, 100, 0, "颗粒"),
     _p("grain_size", "颗粒大小", 0, 100, 25, "颗粒"),
@@ -453,6 +458,8 @@ def _commit(s: dict, out: np.ndarray, label: str) -> None:
     skip past it and restore the wrong frame.
     """
     s["preview"] = out
+    # 源图变了：作废该会话的渲染缓存（见 /api/render 的 _RENDER_CACHE）
+    s["render_ver"] = int(s.get("render_ver", 0)) + 1
     hist = s.get("history")
     if hist is None:
         s["history"] = _new_history(out)
@@ -645,6 +652,23 @@ async def upload(file: UploadFile = File(...)):
 def render(req: RenderRequest):
     s = _get_session(req.session)
     src = s["preview"]
+
+    # ---- 渲染缓存：滑杆回拖/参数对比是最高频操作，全管线重跑 1-4s/次。
+    # key 含会话版本（_commit 递增），源图一变就自然失效。
+    cache_key = None
+    if req.long_edge and req.params is not None:
+        cache_key = (req.session, int(req.long_edge), int(req.quality),
+                     int(s.get("render_ver", 0)),
+                     hashlib.sha256(json.dumps(
+                         req.params, sort_keys=True,
+                         ensure_ascii=False).encode()).hexdigest()[:20])
+        hit = _RENDER_CACHE.get(cache_key)
+        if hit is not None:
+            _RENDER_CACHE.move_to_end(cache_key)
+            payload = dict(hit)
+            payload["cached"] = True
+            return JSONResponse(payload)
+
     if req.long_edge and max(src.shape[:2]) > req.long_edge:
         # 缩略图用的小尺寸渲染：所有阶段都以相对坐标定义，缩过的图和全尺寸
         # 结果视觉上一致，但速度快一个数量级
@@ -668,6 +692,10 @@ def render(req: RenderRequest):
                       "height": int(out.shape[0]),
                       "raw": False}
         payload["histogram"] = hg
+    if cache_key is not None:
+        _RENDER_CACHE[cache_key] = payload
+        while len(_RENDER_CACHE) > _RENDER_CACHE_MAX:
+            _RENDER_CACHE.popitem(last=False)
     return JSONResponse(payload)
 
 
@@ -3350,6 +3378,14 @@ class BatchRequest(BaseModel):
     # write next to the source instead of into out_dir
     overwrite: bool = False
     quality: int = 95
+    # ---- 导出后处理（2026-10-26）----
+    watermark_text: str = ""          # 文字水印（与 logo 二选一或同用）
+    watermark_logo: str = ""          # Logo 图片路径
+    watermark_pos: str = "br"         # tl/tc/tr/ml/mc/mr/bl/bc/br
+    watermark_opacity: float = 0.65
+    naming: str = "{原名}_out"        # {原名}/{序号3}/{日期}/{时间}/{预设}
+    size_w: int = 0                   # 尺寸模板：0 = 原尺寸
+    size_h: int = 0
 
 
 @app.post("/api/batch")
@@ -3396,7 +3432,12 @@ def batch_start(req: BatchRequest):
             return {"__formula__": req.formula}
         return fixed or {}
 
+    seq = [0]
+
     def save_fn(path: str, params: dict) -> str:
+        import cv2 as _cv
+
+        from engine import exportfx as FX
         from engine import formula as formula_engine
         from engine.imgutil import fit_long_edge
 
@@ -3410,22 +3451,37 @@ def batch_start(req: BatchRequest):
         else:
             out, _info = _pipe.run(src, params, detect=True)
 
-        base = os.path.splitext(os.path.basename(path))[0]
+        # 尺寸模板：等比缩放到目标框（长边贴合），透明填充不裁切
+        if req.size_w and req.size_h:
+            ih, iw = out.shape[:2]
+            scale = min(req.size_w / iw, req.size_h / ih)
+            if scale < 0.999:
+                out = _cv.resize(out, (max(1, int(iw * scale)),
+                                       max(1, int(ih * scale))),
+                                 interpolation=_cv.INTER_AREA)
+        # 水印（在最终尺寸上叠，保证位置一致）
+        if req.watermark_text or req.watermark_logo:
+            try:
+                out = FX.apply_watermark(
+                    out, text=req.watermark_text,
+                    logo_path=req.watermark_logo,
+                    position=req.watermark_pos,
+                    opacity=req.watermark_opacity)
+            except Exception as exc:
+                print("watermark failed on %s: %s" % (path, exc))
+
+        seq[0] += 1
+        name = FX.build_filename(req.naming, path, seq[0],
+                                 req.preset or "")
         if req.overwrite:
-            dest = os.path.join(os.path.dirname(path), base + "_out.jpg")
+            dest_dir = os.path.dirname(path)
         else:
-            dest = os.path.join(req.out_dir, base + "_out.jpg")
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        data, ext = encode_jpeg(out, q), "jpg"
-        if data[:4] == b"\x89PNG":
-            ext = "png"
-        with open(os.path.join(os.path.dirname(dest),
-                               os.path.splitext(os.path.basename(dest))[0]
-                               + "." + ext), "wb") as fh:
-            fh.write(data)
-        return os.path.join(os.path.dirname(dest),
-                            os.path.splitext(os.path.basename(dest))[0]
-                            + "." + ext)
+            dest_dir = req.out_dir
+        os.makedirs(dest_dir, exist_ok=True)
+        dest = os.path.join(dest_dir, name + ".jpg")
+        with open(dest, "wb") as fh:
+            fh.write(encode_jpeg(out, q))
+        return dest
 
     run = BT.start(paths, req.out_dir, label, int(req.long_edge),
                    params_for, save_fn)
@@ -3630,6 +3686,194 @@ def models_fetch():
     except Exception as exc:
         return JSONResponse({"phase": "error", "error": str(exc)[:200]},
                             status_code=500)
+
+
+@app.get("/api/sky/library")
+def sky_library():
+    """天空/背景素材库：程序生成，含缩略图（换天空面板的可视化选择）。"""
+    import base64 as _b64
+
+    from engine import sky as SK
+    from engine.imgutil import encode_jpeg
+    items = []
+    for key, label, top, low, sun, clouds in SK.PRESETS:
+        th = SK._sky_texture(96, 160, top, low, sun, clouds,
+                             seed=abs(hash(key)) % 9999)
+        items.append({"id": key, "name": label,
+                      "thumb": _b64.b64encode(
+                          encode_jpeg(th, 82)).decode("ascii")})
+    return JSONResponse({"skies": items})
+
+
+# ---- 图库星级（选片结论：AI 排序之后由人拍板） -------------------------
+_LIB_STARS_FILE = os.path.join(DATA_DIR, "_library_stars.json")
+
+
+def _lib_stars() -> Dict[str, int]:
+    try:
+        with open(_LIB_STARS_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _lib_stars_save(data: Dict[str, int]) -> None:
+    tmp = _LIB_STARS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, _LIB_STARS_FILE)
+
+
+@app.get("/api/library/stars")
+def library_stars():
+    return JSONResponse({"stars": _lib_stars()})
+
+
+@app.post("/api/library/star")
+def library_set_star(req: dict = Body(...)):
+    """src -> 星级（0-5，0 = 清除）。"""
+    src = os.path.abspath(str(req.get("src") or ""))
+    value = int(req.get("value", 0))
+    if not src or not (0 <= value <= 5):
+        raise HTTPException(400, "src 必填, value 0-5")
+    data = _lib_stars()
+    if value:
+        data[src] = value
+    else:
+        data.pop(src, None)
+    _lib_stars_save(data)
+    return JSONResponse({"ok": True, "total": len(data)})
+
+
+class ObjectPickRequest(BaseModel):
+    session: str
+    x: float
+    y: float
+
+
+@app.post("/api/remove/object")
+def remove_object_pick(req: ObjectPickRequest):
+    """点选物体：一个种子点 → grabCut 物体掩膜（给智能消除当 mask）。
+
+    返回 PNG（R 通道即掩膜，同 /api/fill 契约）；覆盖率异常时
+    empty=true，UI 提示改用手涂。
+    """
+    import cv2 as _cv
+
+    from engine import objectpick as OP
+    s = _get_session(req.session)
+    img = s["preview"]
+    mask = OP.pick(img, req.x * img.shape[1], req.y * img.shape[0])
+    cov = float((mask > 0.4).mean())
+    ok, png = _cv.imencode(".png",
+                           (np.clip(mask, 0, 1) * 255).astype(np.uint8))
+    return JSONResponse({
+        "empty": cov < 0.001,
+        "coverage": round(cov, 4),
+        "mask_png": base64.b64encode(png).decode("ascii") if ok else "",
+    })
+
+
+class IdSheetRequest(BaseModel):
+    session: str
+    spec: str = "one_inch"
+    paper: str = "six_inch"       # six_inch(1800x1200) | five_inch(1500x1050)
+    gap: int = 6                  # 张与张的间隙 px（裁切余量）
+
+
+@app.post("/api/idphoto/sheet")
+def idphoto_sheet(req: IdSheetRequest):
+    """证件照联排版：把当前证件照平铺到整张相纸 + 裁切角标。
+
+    输入是已按规格生成的证件照（先跑 /api/idphoto 并 commit），
+    这里只做排版——相纸 6寸/5寸 @300dpi，白底，照片按行列铺满，
+    每张四角画 2px 灰角标，照相馆/打印店照着裁。
+    """
+    import cv2 as _cv
+
+    from engine import idphoto as IP
+    from engine.imgutil import encode_jpeg
+
+    papers = {"six_inch": (1800, 1200), "five_inch": (1500, 1050)}
+    pw, ph = papers.get(req.paper, papers["six_inch"])
+    s = _get_session(req.session)
+    try:
+        photo, info = IP.make_id_photo(s["preview"], req.spec,
+                                       (1.0, 1.0, 1.0))
+    except Exception as exc:
+        raise HTTPException(400, "先在证件照面板生成证件照: " + str(exc)[:80])
+    ih, iw = photo.shape[:2]
+    g = int(req.gap)
+    cols = max(1, (pw + g) // (iw + g))
+    rows = max(1, (ph + g) // (ih + g))
+    sheet = np.ones((ph, pw, 3), np.float32)
+    y = (ph - (rows * ih + (rows - 1) * g)) // 2
+    count = 0
+    for r in range(rows):
+        x = (pw - (cols * iw + (cols - 1) * g)) // 2
+        for c in range(cols):
+            sheet[y:y + ih, x:x + iw] = photo
+            for cx, cy, dx, dy in ((0, 0, 1, 1), (iw, 0, -1, 1),
+                                   (0, ih, 1, -1), (iw, ih, -1, -1)):
+                _cv.line(sheet, (x + cx, y + cy),
+                         (x + cx + dx * 10, y + cy), (0.6, 0.6, 0.6), 1)
+                _cv.line(sheet, (x + cx, y + cy),
+                         (x + cx, y + cy + dy * 10), (0.6, 0.6, 0.6), 1)
+            x += iw + g
+            count += 1
+        y += ih + g
+    return JSONResponse({
+        "image": base64.b64encode(encode_jpeg(sheet, 95)).decode("ascii"),
+        "cols": cols, "rows": rows, "count": count,
+        "paper": "%dx%d" % (pw, ph),
+    })
+
+
+class SkinUnifyRequest(BaseModel):
+    ref_session: str
+    paths: List[str] = []
+    out_dir: str
+    strength: float = 0.8
+    quality: int = 95
+
+
+@app.post("/api/skin/unify")
+def skin_unify(req: SkinUnifyRequest):
+    """套图肤色统一：以 ref_session 的肤色为基准，整批对齐。
+
+    只动皮肤掩膜内（Lab 线性统计对齐，a/b 色相权重高于 L），
+    背景/衣服逐像素不变。输出写 out_dir，文件名 = 原名_skin。
+    """
+    from engine import batch as BT
+    from engine import skintone as ST
+    from engine.imgutil import encode_jpeg, fit_long_edge, load_image
+
+    s = _get_session(req.ref_session)
+    ref_stats = ST.stats(fit_long_edge(s["preview"], 1400))
+    paths = [p for p in req.paths if os.path.isfile(p)]
+    if not paths:
+        raise HTTPException(400, "paths 为空或文件不存在")
+
+    os.makedirs(req.out_dir, exist_ok=True)
+    q = int(max(50, min(100, req.quality)))
+    done = 0
+    for path in paths:
+        try:
+            img = load_image(path)
+            out = ST.unify(fit_long_edge(img, 2400), ref_stats,
+                           float(req.strength))
+            base = os.path.splitext(os.path.basename(path))[0]
+            dest = os.path.join(req.out_dir, base + "_skin.jpg")
+            with open(dest, "wb") as fh:
+                fh.write(encode_jpeg(out, q))
+            done += 1
+        except Exception as exc:
+            return JSONResponse({"ok": False, "done": done,
+                                 "error": "%s: %s" % (path, str(exc)[:120])},
+                                status_code=500)
+    return JSONResponse({"ok": True, "done": done, "total": len(paths),
+                         "out_dir": req.out_dir})
 
 
 # --------------------------------------------------------------------------

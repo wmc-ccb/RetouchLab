@@ -548,3 +548,27 @@ def gains_to_temp_tint(gains) -> dict:
     t = a / 0.22
     return {"temp": float(_np.clip(t * 100.0, -100.0, 100.0)),
             "tint": float(_np.clip(n * 100.0, -100.0, 100.0))}
+
+
+def chromatic_aberration(img: np.ndarray, amount: float = 0.0) -> np.ndarray:
+    """轴向色差校正：R/B 通道绕光心做反向径向缩放。
+
+    amount > 0 校正"红边"（R 通道外扩补偿），< 0 校正"蓝边"。
+    色差本质是各波长焦距不同 → 通道间径向放大率差，按线性径向
+    缩放建模已能消掉大部分紫边/绿边，足够手动滑杆使用。
+    """
+    if not amount:
+        return img
+    h, w = img.shape[:2]
+    k = amount * 0.0022
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    xs = (xs - (w - 1) * 0.5) / (w * 0.5)
+    ys = (ys - (h - 1) * 0.5) / (w * 0.5)      # 与宽同尺度，各向同性
+    out = img.copy()
+    for ch, scale in ((0, 1.0 + k), (2, 1.0 - k)):
+        mx = xs * scale * (w * 0.5) + (w - 1) * 0.5
+        my = ys * scale * (w * 0.5) + (h - 1) * 0.5
+        out[..., ch] = cv2.remap(img[..., ch], mx, my,
+                                 cv2.INTER_LINEAR,
+                                 borderMode=cv2.BORDER_REPLICATE)
+    return out

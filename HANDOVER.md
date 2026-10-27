@@ -578,3 +578,28 @@ UI 回归测试仍然打 HTTP 服务（8765），窗口化不影响测试体系�
 
 **发行产物（dist/）**：full 6.46GB 与 lite 5.18GB 两个 zip（同一
 构建产出，字节校验流程同前）。steady state = full 运行于 8765。
+
+
+### 功能冲刺（2026-10-26 深夜 ~ 27）：9 项新功能
+
+上轮盘点 11 项，实测 3 项（去雾/清晰度/纹理、畸变/暗角、拉腿/肩宽/
+增高）**引擎与 UI 里本来就有**（盘点时的误判，教训：查参数要以
+engine/pipeline.py 的 DEFAULTS 为准，不是只看记忆）。真正新做的 9 项：
+
+| # | 功能 | 实现 | 验证 |
+|---|---|---|---|
+| 1 | 套图肤色统一 | engine/skintone.py（faceparse 皮肤掩膜→Lab 统计对齐, a/b 色相权重高于 L, mask 外不变）; /api/skin/unify; 图库面板按钮（以当前照片为基准跑勾选集） | API+引擎冒烟 |
+| 2 | 点选式智能消除 | engine/objectpick.py（grabCut 种子点+覆盖率守卫）; /api/remove/object; 顶栏「点选」按钮, 点击→掩膜并入消除层, 可与手涂混用 | 画布全链路 CDP 实测（MouseEvent→grabCut→红 overlay→日志） |
+| 3 | 批量水印 | engine/exportfx.py apply_watermark（文字+Logo, 9 位置/不透明度）; 批量面板 UI | 引擎级实测 |
+| 4 | 导出模板+命名 | build_filename（{原名}/{序号3}/{日期}/{时间}/{预设}）; 批量 UI 尺寸模板（3:4/4:3/1:1/A4）+命名输入 | 引擎级实测 |
+| 5 | 图库星级 | /api/library/star(s)（data/_library_stars.json 持久化）; 格子星条点击循环 0-5, ★+ 筛选下拉 | UI CDP + API 实测 |
+| 6 | 天空素材库可视化 | sky.py PRESETS 6→9（夜幕/风暴/纯白棚拍）; /api/sky/library 缩略图; 面板改缩略图网格 | CDP 9 图实测 |
+| 7 | 证件照联排版 | /api/idphoto/sheet（6寸/5寸相纸平铺+裁切角标, 新窗口预览右键另存）; 面板「联排版」按钮 | API 实测（≥8 张） |
+| 8 | 渲染缓存 | /api/render 会话+参数哈希+源版本 LRU(32条, ~10MB); _commit 递增版本号失效 | 命中实测 cached:true |
+| 9 | 色差校正滑杆 | tone.py chromatic_aberration（R/B 反向径向缩放）; 镜头组 ca_amount | applied 含 lens_correction |
+
+回归：25 套受影响面（引擎+批量+图库+证件照+消除+发布特性）
+**25/25 全过**（out/_feat_regression.txt）。
+
+注意：filmSetStars（胶片栏 Shift+1..5）与图库星级是两套——前者是
+胶片栏临时标记，后者是图库持久化选片结论。

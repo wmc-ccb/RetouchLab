@@ -597,6 +597,7 @@
       <button class="tbtn" id="btnHeal" disabled><span class="ico">◍</span>修复</button>
       <button class="tbtn" id="btnStamp" disabled><span class="ico">⊞</span>图章</button>
       <button class="tbtn" id="btnErase" disabled><span class="ico">✦</span>消除</button>
+      <button class="tbtn" id="btnPick" disabled title="点一下物体自动圈选，配合消除使用"><span class="ico">◎</span>点选</button>
       <button class="tbtn" id="btnUpscale" disabled><span class="ico">⤢</span>超清</button>
     </div>
     <div class="tgroup">
@@ -1174,6 +1175,44 @@ function renderBatch() {
     '<button class="chip" id="bCancel" style="display:none">取消</button>';
   wrap.appendChild(run);
 
+  // ---- 导出选项：尺寸模板 / 命名 / 水印（交付前的收尾三件套） ----
+  const adv = document.createElement('div');
+  adv.className = 'groupTitle'; adv.textContent = '导出选项';
+  wrap.appendChild(adv);
+  const mkRow = (label, html) => {
+    const r = document.createElement('div');
+    r.className = 'batchRow';
+    r.innerHTML = '<span style="font-size:11px;color:var(--dim);width:52px">' +
+      label + '</span>' + html;
+    wrap.appendChild(r);
+  };
+  mkRow('尺寸', '<select id="bSize" style="flex:1">' +
+    '<option value="">原尺寸</option>' +
+    '<option value="1080,1440">3:4 · 1080×1440（小红书/朋友圈竖图）</option>' +
+    '<option value="1440,1080">4:3 · 1440×1080（横版展示）</option>' +
+    '<option value="2048,2048">1:1 · 2048×2048（方图）</option>' +
+    '<option value="2480,3508">A4 300dpi（打印）</option>' +
+    '</select>');
+  mkRow('命名', '<input type="text" id="bNaming" ' +
+    'placeholder="{原名}_{序号3}" value="{原名}_out" ' +
+    'title="占位符: {原名} {序号3} {日期} {时间} {预设}" style="flex:1">');
+  $('bNaming').value = localStorage.getItem('rl_batch_naming') || '{原名}_out';
+  mkRow('水印', '<input type="text" id="bWatermark" ' +
+    'placeholder="留空=不加水印，例: © 2026 我的Studio" style="flex:1">');
+  $('bWatermark').value = localStorage.getItem('rl_batch_wm') || '';
+  mkRow('水印位', '<select id="bWmPos" style="flex:1">' +
+    '<option value="br">右下</option><option value="bl">左下</option>' +
+    '<option value="tr">右上</option><option value="tl">左上</option>' +
+    '<option value="bc">底部居中</option><option value="mc">居中</option>' +
+    '</select>');
+  const wmOpacity = document.createElement('div');
+  wmOpacity.className = 'sl';
+  wmOpacity.innerHTML =
+    '<div class="hdr"><span class="name">水印不透明度</span>' +
+    '<span class="val" id="v_wmOpa">65%</span></div>' +
+    '<input type="range" id="r_wmOpa" min="10" max="100" step="5" value="65">';
+  wrap.appendChild(wmOpacity);
+
   const prog = document.createElement('div');
   prog.innerHTML = '<div class="prog" id="bProg" style="display:none">' +
     '<div></div></div><div class="bstat" id="bStat"></div>' +
@@ -1182,6 +1221,9 @@ function renderBatch() {
 
   $('bStart').onclick = startBatch;
   $('bCancel').onclick = cancelBatch;
+  if ($('r_wmOpa')) $('r_wmOpa').addEventListener('input', e => {
+    $('v_wmOpa').textContent = e.target.value + '%';
+  });
 }
 
 async function startBatch() {
@@ -1196,8 +1238,24 @@ async function startBatch() {
   if (src) localStorage.setItem('rl_batch_src', src);
   setBusy(true);
   try {
+    const naming = $('bNaming') ? $('bNaming').value.trim() : '{原名}_out';
+    const wm = $('bWatermark') ? $('bWatermark').value.trim() : '';
+    const sizeSel = $('bSize') ? $('bSize').value : '';
+    localStorage.setItem('rl_batch_naming', naming);
+    localStorage.setItem('rl_batch_wm', wm);
     const body = { out_dir: out, preset: BATCH.preset,
-                   long_edge: BATCH.mode === 'draft' ? 1280 : 0 };
+                   long_edge: BATCH.mode === 'draft' ? 1280 : 0,
+                   naming: naming || '{原名}_out' };
+    if (wm) {
+      body.watermark_text = wm;
+      body.watermark_pos = $('bWmPos') ? $('bWmPos').value : 'br';
+      body.watermark_opacity =
+        $('r_wmOpa') ? parseInt($('r_wmOpa').value) / 100 : 0.65;
+    }
+    if (sizeSel) {
+      const [sw, sh] = sizeSel.split(',').map(Number);
+      body.size_w = sw; body.size_h = sh;
+    }
     if (sel) {
       body.paths = sel;
       body.path = null;
@@ -2607,7 +2665,7 @@ async function adoptTether(entry) {
     S.base = 'data:image/jpeg;base64,' + img.image;
     matteImg = null; eraseCanvas = null;
     $('dropzone').style.display = 'none';
-    ['btnExport','btnErase','btnPicker','btnMatte','btnMatch',
+    ['btnExport','btnErase','btnPick','btnPicker','btnMatte','btnMatch',
      'btnAuto','btnHeal','btnStamp','btnUpscale'].forEach(id => {
        const el = $(id); if (el) el.disabled = false;
      });
@@ -4438,14 +4496,34 @@ function renderSky() {
     '<div class="bstat">自动识别天空区域（人物/建筑保留），选一个新天空。' +
     '没有生成模型，效果是程序化合成的。</div>';
 
-  const pre = document.createElement('div');
-  pre.className = 'presetRow';
-  pre.style.flexWrap = 'wrap';
-  pre.innerHTML = SKY.PRESETS.map(p =>
-    '<button class="chip skyPre" data-p="' + p[0] + '"' +
-    (SKY.preset === p[0] ? ' style="border-color:var(--gold)"' : '') +
-    '>' + p[1] + '</button>').join('');
-  wrap.appendChild(pre);
+  // 素材库：缩略图网格（程序生成，所见即所得）
+  const grid = document.createElement('div');
+  grid.id = 'skyLib';
+  grid.style.cssText =
+    'display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0';
+  wrap.appendChild(grid);
+  const paint = (items) => {
+    grid.innerHTML = (items || []).map(s =>
+      '<button class="chip skyPre" data-p="' + s.id + '"' +
+      (SKY.preset === s.id ? ' style="border-color:var(--gold);padding:0"' : ' style="padding:0"') +
+      ' title="' + s.name + '">' +
+      '<img src="data:image/jpeg;base64,' + s.thumb +
+      '" style="width:100%;display:block;border-radius:4px">' +
+      '<span style="display:block;font-size:10px;padding:3px 0">' +
+      s.name + '</span></button>').join('');
+    grid.querySelectorAll('.skyPre').forEach(b => {
+      b.onclick = () => {
+        SKY.preset = b.dataset.p;
+        grid.querySelectorAll('.skyPre').forEach(x =>
+          x.style.borderColor = '');
+        b.style.borderColor = 'var(--gold)';
+      };
+    });
+  };
+  paint(SKY.PRESETS.map(p => ({ id: p[0], name: p[1], thumb: '' })));
+  fetch('/api/sky/library').then(r => r.json())
+    .then(j => { paint(j.skies); })
+    .catch(() => { /* 缩略图拉不到就保持名字按钮 */ });
 
   const strength = document.createElement('div');
   strength.className = 'sl';
@@ -4477,14 +4555,6 @@ function renderSky() {
   view.style.cssText = 'margin-top:8px;text-align:center';
   wrap.appendChild(view);
 
-  pre.querySelectorAll('.skyPre').forEach(b => {
-    b.onclick = () => {
-      SKY.preset = b.dataset.p;
-      pre.querySelectorAll('.skyPre').forEach(x =>
-        x.style.borderColor = '');
-      b.style.borderColor = 'var(--gold)';
-    };
-  });
   $('skyRun').onclick = runSky;
 }
 
@@ -4563,7 +4633,8 @@ function renderIdPhoto() {
   const acts = document.createElement('div');
   acts.className = 'presetRow';
   acts.innerHTML = '<button class="goldbtn" id="idMake">生成证件照</button>' +
-    '<button class="chip" id="idSave">导出文件…</button>';
+    '<button class="chip" id="idSave">导出文件…</button>' +
+    '<button class="chip" id="idSheet" title="把当前证件照平铺到整张相纸，带裁切角标，直接送打印">联排版…</button>';
   wrap.appendChild(acts);
 
   const view = document.createElement('div');
@@ -4588,6 +4659,32 @@ function renderIdPhoto() {
     };
   });
   $('idMake').onclick = () => makeIdPhoto(false);
+  $('idSheet').onclick = async () => {
+    if (!S.session) { log('先载入图片'); return; }
+    const paper = IDP.paper || 'six_inch';
+    const btn = $('idSheet');
+    btn.disabled = true; btn.textContent = '排版中…';
+    try {
+      const r = await fetch('/api/idphoto/sheet', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session: S.session,
+          spec: IDP.spec || 'one_inch', paper }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.detail || r.statusText);
+      const w = window.open('', '_blank');
+      if (w) {
+        w.document.write('<title>联排版 ' + j.count + ' 张</title>' +
+          '<body style="margin:0;background:#333;text-align:center">' +
+          '<img src="data:image/jpeg;base64,' + j.image +
+          '" style="max-width:100%" onclick="document.title=\'download\'">' +
+          '<div style="color:#eee;padding:6px">' + j.count + ' 张 · ' +
+          '右键图片另存为（相纸 ' + j.paper + ' @300dpi）</div></body>');
+        w.document.close();
+      }
+      log('联排版已生成：' + j.count + ' 张（' + j.paper + '）');
+    } catch (e) { log('联排版失败：' + e.message); }
+    finally { btn.disabled = false; btn.textContent = '联排版…'; }
+  };
   $('idSave').onclick = () => makeIdPhoto(true);
 }
 
@@ -4734,8 +4831,26 @@ async function libScan(path, recursive) {
 }
 
 function libVisible() {
-  if (LIB.filter === 'all') return LIB.items;
-  return LIB.items.filter(it => (it.tags || []).includes(LIB.filter));
+  let out = LIB.items;
+  if (LIB.filter !== 'all')
+    out = out.filter(it => (it.tags || []).includes(LIB.filter));
+  // 星级筛选（选片结论）：★+ 及以上
+  if (LIB.starFilter) {
+    out = out.filter(it =>
+      ((LIB.stars || {})[it.path] || 0) >= LIB.starFilter);
+  }
+  return out;
+}
+
+// 星级：点一下 +1（5 → 0 清除）。与勾选（Ctrl/Shift）和打开（双击）
+// 互不干扰——星条自己接管 click 并 stopPropagation。
+function libStarSpan(path) {
+  const v = (LIB.stars || {})[path] || 0;
+  return '<span class="libStar" data-p="' + encodeURIComponent(path) +
+    '" style="position:absolute;left:2px;top:2px;background:rgba(0,0,0,.7);' +
+    'color:#e8b341;font-size:10px;padding:0 4px;border-radius:2px;' +
+    'cursor:pointer;letter-spacing:1px" title="点击改星级">' +
+    ('★'.repeat(v) || '☆') + '</span>';
 }
 
 function renderLibrary() {
@@ -4756,6 +4871,31 @@ function renderLibrary() {
   bar.querySelectorAll('.libF').forEach(b => {
     b.onclick = () => { LIB.filter = b.dataset.f; renderLibrary(); };
   });
+
+  // 星级筛选行（选片结论）：★+ 及以上
+  if (!LIB.stars) {
+    LIB.stars = {};
+    fetch('/api/library/stars').then(r => r.json())
+      .then(j => { LIB.stars = j.stars || {}; })
+      .catch(() => {});
+  }
+  const starBar = document.createElement('div');
+  starBar.className = 'presetRow';
+  starBar.style.marginTop = '4px';
+  starBar.innerHTML =
+    '<select id="libStarFilter" style="flex:1;background:var(--panel3);' +
+    'color:var(--text);border:1px solid var(--line);border-radius:5px;' +
+    'font-size:11px;padding:3px 4px">' +
+    '<option value="0">星级：全部</option>' +
+    [1, 2, 3, 4, 5].map(n =>
+      '<option value="' + n + '"' +
+      (LIB.starFilter === n ? ' selected' : '') + '>★'.repeat(n) + ' 及以上</option>'
+    ).join('') + '</select>';
+  wrap.appendChild(starBar);
+  starBar.querySelector('select').onchange = e => {
+    LIB.starFilter = parseInt(e.target.value, 10) || 0;
+    renderLibrary();
+  };
 
   // 来源（用户导入的文件夹）+ 导入按钮 + 拖放
   const roots = document.createElement('div');
@@ -4846,6 +4986,7 @@ function renderLibrary() {
         ';border-radius:4px;overflow:hidden;cursor:pointer;background:#222">' +
         '<img loading="lazy" src="' + thumbSrc + '" style="width:100%;display:block;' +
         'aspect-ratio:3/2;object-fit:cover">' +
+        (it.path ? libStarSpan(it.path) : '') +
         '<span style="position:absolute;left:2px;bottom:2px;' +
         'background:rgba(0,0,0,.7);color:#ddd;font-size:9px;padding:0 3px;' +
         'border-radius:2px">' + (idx + 1) + '</span>' +
@@ -4882,6 +5023,20 @@ function renderLibrary() {
     };
     el.ondblclick = () => libOpen(idx);
   });
+  // 星级点击（比格子点击优先，且不触发选中）
+  grid.querySelectorAll('.libStar').forEach(sp => {
+    sp.onclick = ev => {
+      ev.stopPropagation();
+      const path = decodeURIComponent(sp.dataset.p);
+      const cur = (LIB.stars[path] || 0);
+      const next = (cur + 1) % 6;            // 0→1→…→5→0
+      fetch('/api/library/star', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ src: path, value: next }) })
+        .then(() => { LIB.stars[path] = next; renderLibrary(); })
+        .catch(e => log('星级保存失败：' + e.message));
+    };
+  });
 
   // 智能预览 + 元数据：常驻在网格下方（参考软件在右栏，这里画布更窄，
   // 放底部一样达到"点一张看一张"的目的）
@@ -4911,6 +5066,37 @@ function renderLibrary() {
     setMode('library');       // 保持图库模块内切分类，选中集不丢
     selectCat('批处理');
     log('已带 ' + nsel + ' 个选中文件进入批处理');
+  };
+
+  // ---- 套图肤色统一：以当前打开的照片为基准，勾选集全部对齐 ----
+  const skin = document.createElement('div');
+  skin.className = 'presetRow';
+  skin.style.marginTop = '6px';
+  skin.innerHTML = '<button class="chip" id="libSkinUnify"' +
+    (S.session && nsel ? '' : ' disabled') +
+    '>统一肤色（以当前照片为基准，' + nsel + ' 张）</button>';
+  wrap.appendChild(skin);
+  $('libSkinUnify').onclick = async () => {
+    if (!S.session || !nsel) return;
+    const outDir = prompt('输出到哪个文件夹？',
+      localStorage.getItem('rl_skin_out') ||
+      (LIB.path ? LIB.path + '\\skin_out' : ''));
+    if (!outDir) return;
+    localStorage.setItem('rl_skin_out', outDir);
+    const paths = Object.keys(LIB.sel).filter(i => LIB.sel[i])
+      .map(i => (LIB.items[+i] || {}).path).filter(Boolean);
+    const btn = $('libSkinUnify');
+    btn.disabled = true; btn.textContent = '统一肤色中…';
+    try {
+      const r = await fetch('/api/skin/unify', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ref_session: S.session,
+          paths: paths, out_dir: outDir }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || j.detail || r.statusText);
+      log('肤色统一完成：' + j.done + '/' + j.total + ' 张 → ' + outDir);
+    } catch (e) { log('肤色统一失败：' + e.message); }
+    finally { btn.disabled = false; btn.textContent = '统一肤色（以当前照片为基准）'; }
   };
 
   // ---- 我的分组（选片集）：存勾选 / 查看分组 ----
@@ -5077,7 +5263,7 @@ async function libOpen(idx) {
     S.base = 'data:image/jpeg;base64,' + j.image;
     matteImg = null; eraseCanvas = null;
     $('dropzone').style.display = 'none';
-    ['btnExport','btnErase','btnPicker','btnMatte','btnMatch','btnAuto',
+    ['btnExport','btnErase','btnPick','btnPicker','btnMatte','btnMatch','btnAuto',
      'btnHeal','btnStamp','btnUpscale'].forEach(id => {
        const e = $(id); if (e) e.disabled = false;
      });
@@ -5638,7 +5824,7 @@ async function upload(file) {
     matteImg = null; eraseCanvas = null;
     await drawBase();
     $('dropzone').style.display = 'none';
-    ['btnExport','btnErase','btnPicker','btnMatte','btnMatch',
+    ['btnExport','btnErase','btnPick','btnPicker','btnMatte','btnMatch',
      'btnAuto','btnHeal','btnStamp','btnUpscale'].forEach(
       function (id) { $(id).disabled = false; });
     addThumb(S.base, file.name);
@@ -6383,6 +6569,65 @@ $('btnMatch').onclick = () => {
 };
 
 let erasing = false, eraseDown = false, eraseCanvas = null;
+let pickMode = false;          // 消除模式下的"点选物体"：点击=grabCut 圈选
+
+// 点选物体：点一下 → 服务端 grabCut 出掩膜 → 并入消除层（红色）。
+// 与手涂完全兼容：点选完还能继续手涂补边，再点"完成填充"。
+async function objectPickAt(ev) {
+  const c = $('canvas'), rect = c.getBoundingClientRect();
+  const nx = (ev.clientX - rect.left) / rect.width;
+  const ny = (ev.clientY - rect.top) / rect.height;
+  if (!eraseCanvas) return;
+  setBusy(true);
+  try {
+    const r = await fetch('/api/remove/object', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session: S.session, x: nx, y: ny }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || r.statusText);
+    if (j.empty) {
+      log('这一点没圈出物体（对比不足）——换手涂试试');
+      return;
+    }
+    // 返回的灰度 PNG → 红色并入消除层
+    const img = new Image();
+    await new Promise(res => { img.onload = res; img.src =
+      'data:image/png;base64,' + j.mask_png; });
+    const t = document.createElement('canvas');
+    t.width = eraseCanvas.width; t.height = eraseCanvas.height;
+    const tc = t.getContext('2d');
+    tc.drawImage(img, 0, 0, t.width, t.height);
+    const src = tc.getImageData(0, 0, t.width, t.height);
+    const dst = tc.createImageData(t.width, t.height);
+    for (let i = 0; i < src.data.length; i += 4) {
+      const on = src.data[i] > 96;
+      dst.data[i] = on ? 255 : 0;
+      dst.data[i + 1] = dst.data[i + 2] = 0;
+      dst.data[i + 3] = on ? 255 : 0;
+    }
+    tc.putImageData(dst, 0, 0);
+    eraseCanvas.getContext('2d').drawImage(t, 0, 0);
+    // 刷新叠加预览
+    const ctx2 = c.getContext('2d');
+    ctx2.drawImage(S.img, 0, 0);
+    ctx2.save(); ctx2.globalAlpha = 0.45;
+    ctx2.drawImage(eraseCanvas, 0, 0, c.width, c.height);
+    ctx2.restore();
+    log('已圈选（覆盖 ' + (j.coverage * 100).toFixed(1) +
+        '%）——可继续点选/手涂，完成填充生效');
+  } catch (e) { log('点选失败：' + e.message); }
+  finally { setBusy(false); }
+}
+
+function pickToggle() {
+  if (!S.session || !S.img) return;
+  if (!erasing) eraseToggle();       // 点选自动进入消除模式
+  pickMode = !pickMode;
+  $('btnPick').classList.toggle('active', pickMode);
+  $('btnPick').innerHTML = pickMode
+    ? '<span class="ico">✓</span>点选中' : '<span class="ico">◎</span>点选';
+  if (pickMode) log('点选物体：在画布上点要消除的物体（可连点多个），再点「完成填充」');
+}
 function eraseToggle() {
   if (!S.session || !S.img) return;
   erasing = !erasing;
@@ -7150,7 +7395,8 @@ $('btnUpscale').onclick = async () => {
 };
 $('btnHeal').onclick = () => setBrush('heal');
 $('btnStamp').onclick = () => setBrush('clone');
-$('btnErase').onclick = () => { if (BRUSH.mode) setBrush(BRUSH.mode); eraseToggle(); };
+$('btnErase').onclick = () => { if (BRUSH.mode) setBrush(BRUSH.mode); eraseToggle(); if (!erasing) { pickMode = false; $('btnPick').classList.remove('active'); } };
+$('btnPick').onclick = pickToggle;
 document.addEventListener('keydown', e => {
   const mod = e.ctrlKey || e.metaKey;
   const k = e.key.toLowerCase();
@@ -7237,6 +7483,7 @@ $('canvas').addEventListener('mousedown', ev => {
     BRUSH.path = [canvasPos(ev)];
     return;
   }
+  if (pickMode && erasing) { objectPickAt(ev); return; }
   if (erasing) { eraseDraw(ev); eraseDown = true; return; }
   // local panel open with a selection: drag the mask
   if (LOCAL.sel >= 0 && LOCAL.entries[LOCAL.sel] && !picking) {

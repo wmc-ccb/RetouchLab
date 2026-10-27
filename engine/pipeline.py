@@ -68,7 +68,7 @@ DEFAULTS: Dict[str, float] = {
     "nr_luminance": 0.0, "nr_color": 0.0, "nr_detail": 50.0, "nr_smoothness": 50.0,
     "ai_denoise": 0.0, "ai_denoise_strength": 50.0,
     # optics
-    "distortion": 0.0, "vignetting": 0.0, "vignetting_midpoint": 50.0,
+    "distortion": 0.0, "vignetting": 0.0, "vignetting_midpoint": 50.0, "ca_amount": 0.0,
     # grain
     "grain_amount": 0.0, "grain_size": 25.0, "grain_roughness": 50.0,
     "grain_shadows": 0.0, "grain_midtones": 0.0, "grain_highlights": 0.0,
@@ -747,10 +747,17 @@ class RetouchPipeline:
             info["applied"].append("sharpening")
 
         # ---- optics -------------------------------------------------------
-        if p.get("distortion") or p.get("vignetting"):
-            work = stage("lens_correction",
-                         lambda: T.lens_correction(work, p["distortion"],
-                                                   p["vignetting"], p["vignetting_midpoint"]))
+        if p.get("distortion") or p.get("vignetting") or p.get("ca_amount"):
+            def _lens():
+                out = work
+                if p.get("distortion") or p.get("vignetting"):
+                    out = T.lens_correction(out, p["distortion"],
+                                            p["vignetting"],
+                                            p["vignetting_midpoint"])
+                if p.get("ca_amount"):
+                    out = T.chromatic_aberration(out, p["ca_amount"])
+                return out
+            work = stage("lens_correction", _lens)
             info["applied"].append("lens_correction")
 
         # ---- grain --------------------------------------------------------
