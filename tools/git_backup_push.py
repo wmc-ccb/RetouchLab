@@ -70,13 +70,25 @@ def main():
         capture_output=True, text=True, check=True).stdout.strip()
 
     entries = []
+    skipped_workflows = []
     for line in subprocess.run(
             ["git", "ls-tree", "-r", "HEAD"],
             capture_output=True, text=True, check=True).stdout.splitlines():
         meta, path = line.split("\t", 1)
         mode, otype, sha = meta.split()
+        # token 无 workflows scope 时，Git trees API 对 .github/workflows/
+        # 路径直接 404（整个请求一起失败）。授权前先跳过这些路径保住
+        # 其余内容的备份；授权后（gh auth refresh -s workflows）本跳过
+        # 自动失效（路径不在即不再触发）。
+        if path.startswith(".github/workflows/"):
+            skipped_workflows.append(path)
+            continue
         entries.append({"path": path, "mode": mode, "type": otype,
                         "local_sha": sha})
+    if skipped_workflows:
+        print("注意: 跳过 %d 个 workflow 文件（token 缺 workflows scope, "
+              "本地保留; gh auth refresh -s workflows 后可全量备份）"
+              % len(skipped_workflows))
 
     if args.dry_run:
         print("分支 %s -> %s，共 %d 个文件" % (branch, owner_repo, len(entries)))
