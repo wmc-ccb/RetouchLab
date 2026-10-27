@@ -7875,7 +7875,10 @@ function modelsBootShowErr(msg) {
 function modelsBootPoll() {
   fetch('/api/models').then(r => r.json()).then(st => {
     if (!st || st.total === undefined) return;   // 端点异常：不挡应用
-    if (st.phase === 'done' && st.installed >= st.total) {
+    // 模型已齐就撤引导层——**不能只认 phase==='done'**：服务重启后
+    // 状态回到 idle（没有下载任务在跑），已装满的机器会卡在引导层
+    // 挡住整个界面（截图审计抓到的真 bug）。
+    if (st.installed >= st.total) {
       const card = document.getElementById('modelsBoot');
       if (card) card.remove();
       clearTimeout(MODELS_BOOT.timer);
