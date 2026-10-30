@@ -17,6 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 全新 checkout 没有 data/ 和 out/：formula 库保存、geoface/locality
+      # 的渲染产物都写这里，先建好（真机首发时 assemble_dist 也会建）
+      - name: 准备可写目录
+        run: New-Item -ItemType Directory -Force -Path data, out
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"

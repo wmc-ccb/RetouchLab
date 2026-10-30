@@ -10,7 +10,7 @@ import sys
 
 import numpy as np
 
-ROOT = r"C:\Users\Rana\ZhaJinWenQianCake"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
