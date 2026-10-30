@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  engine-tests:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      # 模型 980MB 按清单内容缓存；清单变了自动重下
+      - name: 模型缓存
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: models-${{ hashFiles('tools/models_manifest.json') }}
+
+      - name: 下载模型（缓存未命中时）
+        if: steps.models.outputs.cache-hit != 'true'
+        run: python tools/fetch_models.py
+
+      # 11 套无头回归：不依赖浏览器/ComfyUI/作者本机照片
+      # （其余套件需要 Chrome CDP、ComfyUI 或本机照片，只能在开发机上跑）
+      - name: 引擎回归
+        run: |
+          $suites = @(
+            "verify_clip_onnx", "verify_curves", "verify_eyes",
+            "verify_formula", "verify_geoface", "verify_clothes",
+            "verify_landmarks", "verify_locality", "verify_psunits",
+            "verify_skin_gate", "verify_wheel"
+          )
+          $fail = 0
+          foreach ($s in $suites) {
+            Write-Host "=== $s ==="
+            python "tests/$s.py"
+            if ($LASTEXITCODE -ne 0) { $fail = 1; Write-Host "::error::$s FAILED" }
+          }
+          if ($fail -ne 0) { exit 1 }
+
+      - name: 上传渲染产物（排障用）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: out/
+          if-no-files-found: ignore
