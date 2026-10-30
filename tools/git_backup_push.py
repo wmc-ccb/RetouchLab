@@ -70,13 +70,20 @@ def main():
         capture_output=True, text=True, check=True).stdout.strip()
 
     entries = []
-    for line in subprocess.run(
-            ["git", "ls-tree", "-r", "HEAD"],
-            capture_output=True, text=True, check=True).stdout.splitlines():
-        meta, path = line.split("\t", 1)
-        mode, otype, sha = meta.split()
-        entries.append({"path": path, "mode": mode, "type": otype,
-                        "local_sha": sha})
+    # **必须用 -z**：默认输出会把非 ASCII 文件名 quote 成八进制转义
+    # 显示串（如 "\344..."），拿它当路径传给 trees API，远端就会建出
+    # 一个带引号的非法 Windows 文件名，CI checkout 直接 invalid path。
+    # -z = NUL 分隔 + 原始字节路径，永不转义。
+    raw = subprocess.run(
+        ["git", "ls-tree", "-r", "-z", "HEAD"],
+        capture_output=True, check=True).stdout
+    for entry in raw.split(b"\x00"):
+        if not entry:
+            continue
+        meta, path_b = entry.split(b"\t", 1)
+        mode, otype, sha = meta.decode("ascii").split()
+        entries.append({"path": path_b.decode("utf-8"), "mode": mode,
+                        "type": otype, "local_sha": sha})
 
     if args.dry_run:
         print("分支 %s -> %s，共 %d 个文件" % (branch, owner_repo, len(entries)))
