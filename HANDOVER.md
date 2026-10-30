@@ -603,3 +603,33 @@ engine/pipeline.py 的 DEFAULTS 为准，不是只看记忆）。真正新做的
 
 注意：filmSetStars（胶片栏 Shift+1..5）与图库星级是两套——前者是
 胶片栏临时标记，后者是图库持久化选片结论。
+
+
+### 对标补全（2026-10-30）：手足/贴纸/沙滩
+
+对照 pixcakeai.com/ability（JS 渲染 SPA，靠原始 HTML 里的功能标签 +
+素材 slug 双源提取）做了能力对照：核心修图覆盖 ~85%。
+
+本轮新增（tests/verify_hands_beach.py 19/19）：
+- 手部美化：`engine/handfoot.py` + HandLandmarker（tasks API）。
+  模型 `hand_landmarker.task`（7.5MB，sha256 fbc2a300…）已入
+  models-v1 Release 与清单。掩膜 = 关节凸包外扩 6% + 羽化。
+- 脚部美化/鞋子祛瑕：姿态 ANKLE/HEEL/FOOT_INDEX 三角定区域。
+  **注意 `Pose.landmarks` 是归一化坐标**，管线接线时乘 (w,h,1)。
+- 鞋子祛瑕：鞋面区域内中值差分找小斑块（面积窗 3~120px² 过滤，
+  太大的是阴影不清）→ TELEA inpaint。
+- 祛双眼皮贴：`skin.eyelid_tape_soften` 眼睑条带（眼眶上缘上探
+  0.85 眼高）频率分离，高频按 degree 衰减、texture_keep=40 保自然纹理。
+- 沙滩美化：`engine/beach.py` HSV 沙面先验（H4-42/S8-130/V90+）
+  + 下半帧权重 + 最大连通域；祛杂物面积窗过滤；保边平整。
+- 全部走管线滑杆（PARAM_SPEC +9：手足组 5、场景组 3、五官组 1，
+  总控件 119），检测未命中安静跳过。
+
+**这轮的三个集成 bug（都有普适教训）**：
+1. `except Exception: return []` 吞掉了 `mp` 未导入的 NameError，
+   400+ 张有手的照片静默零检出——官方测试图是唯一能抓到它的基准，
+   **封装第三方检测器必须用官方样图冒烟**。
+2. `threading.Lock` 非重入：detect_hands 持锁调 _detector() 再拿
+   同一把锁 → 自死锁。惰性单例 + 包装函数同持一把锁时用 RLock。
+3. 凸包外扩 `np.stack(两个(N,2))` 造出 (N,2,2)，fillPoly 断言失败——
+   坐标变换写完后 print shape 再继续。
