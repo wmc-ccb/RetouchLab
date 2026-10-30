@@ -1234,6 +1234,11 @@ function renderBatch() {
     '<option value="2048,2048">1:1 · 2048×2048（方图）</option>' +
     '<option value="2480,3508">A4 300dpi（打印）</option>' +
     '</select>');
+  mkRow('格式', '<select id="bFormat" style="flex:1">' +
+    '<option value="jpg">JPG（有损，文件小）</option>' +
+    '<option value="png">PNG（无损）</option>' +
+    '<option value="tiff">TIFF（印刷/再加工）</option>' +
+    '</select>');
   mkRow('命名', '<input type="text" id="bNaming" ' +
     'placeholder="{原名}_{序号3}" value="{原名}_out" ' +
     'title="占位符: {原名} {序号3} {日期} {时间} {预设}" style="flex:1">');
@@ -1286,7 +1291,8 @@ async function startBatch() {
     localStorage.setItem('rl_batch_wm', wm);
     const body = { out_dir: out, preset: BATCH.preset,
                    long_edge: BATCH.mode === 'draft' ? 1280 : 0,
-                   naming: naming || '{原名}_out' };
+                   naming: naming || '{原名}_out',
+                   format: $('bFormat') ? $('bFormat').value : 'jpg' };
     if (wm) {
       body.watermark_text = wm;
       body.watermark_pos = $('bWmPos') ? $('bWmPos').value : 'br';

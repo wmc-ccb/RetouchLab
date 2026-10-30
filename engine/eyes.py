@@ -114,3 +114,51 @@ def info() -> dict:
     return {"feature": "closed_eye",
             "proxies": ["dark ratio in eye ellipse", "vertical gradient"],
             "thresholds": "20th percentile of the batch"}
+
+
+def remove_red_eye(img: np.ndarray, face, degree: float = 0.0,
+                   eye_boxes: Optional[List[tuple]] = None) -> np.ndarray:
+    """去红眼：闪光灯直射瞳孔反光成的红色圆斑 → 去饱和 + 压暗。
+
+    判据（只在眼盒中心区找，避免误伤眼妆/唇色）：
+        R 通道显著高于 G/B（R-G > 28 且 R-B > 28 且 R > 90）
+    修复方式：把红斑像素替换为该点 G/B 均值的暗灰（恢复瞳孔该有的
+    深色），degree 控制替换强度；未命中红簇（正常眼睛）时安静返回。
+
+    `face.eyes` / `eye_boxes` 都是 (x, y, w, h) 眼盒。
+    """
+    import cv2  # noqa: F401  (保持与模块其它处一致的懒加载风格)
+
+    if degree <= 0:
+        return img
+    boxes = list(eye_boxes) if eye_boxes else list(face.eyes or [])
+    if not boxes:
+        return img
+    h, w = img.shape[:2]
+    k = float(np.clip(degree / 100.0, 0.0, 1.0))
+    out = img.copy()
+    total_hits = 0
+    for (ex, ey, ew, eh) in boxes:
+        x0 = int(max(0, ex)); x1 = int(min(w, ex + ew))
+        y0 = int(max(0, ey)); y1 = int(min(h, ey + eh * 0.75))  # 上 3/4：瞳孔区
+        if x1 <= x0 or y1 <= y0:
+            continue
+        # 引擎图是 0-1 浮点，检测阈值按 0-255 设计 → 先升到 u8 尺度
+        roi = img[y0:y1, x0:x1]
+        roi255 = (np.clip(roi, 0, 1) * 255).astype(np.float32)
+        r_ch = roi255[..., 0]
+        g_ch = roi255[..., 1]
+        b_ch = roi255[..., 2]
+        red = ((r_ch > 90) & (r_ch - g_ch > 28) & (r_ch - b_ch > 28))
+        n = int(red.sum())
+        if n < 4 or n > (red.size * 0.5):
+            continue               # 簇太小=噪点，太大=整框都红(非瞳孔)
+        total_hits += n
+        # 替换色：G/B 均值的暗灰（保留一点明暗结构），回到 0-1 域
+        gray = ((g_ch + b_ch) * 0.5) * 0.45 / 255.0
+        # 羽化红掩膜，替换边缘自然过渡
+        m = cv2.GaussianBlur(red.astype(np.float32), (0, 0), 1.0)[..., None]
+        fix = np.dstack([gray, gray, gray])
+        roi_new = roi * (1 - m * k) + fix * (m * k)
+        out[y0:y1, x0:x1] = roi_new
+    return out

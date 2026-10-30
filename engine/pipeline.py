@@ -74,6 +74,7 @@ DEFAULTS: Dict[str, float] = {
     "foot_smooth": 0.0, "foot_tone": 0.0, "shoe_clean": 0.0,
     # 祛双眼皮贴（眼睑条带高频衰减）
     "eyelid_tape": 0.0,
+    "redeye": 0.0,
     # 沙滩美化（beach: 沙面掩膜内祛杂物/平整/暖调）
     "beach_debris": 0.0, "beach_flatten": 0.0, "beach_warm": 0.0,
     # grain
@@ -543,6 +544,17 @@ class RetouchPipeline:
                 return out
             work = stage("eyelid_tape", _eyelid)
             info["applied"].append("eyelid_tape")
+
+        if p.get("redeye") and faces:
+            def _redeye():
+                from . import eyes as EYES
+                out = work
+                for f in faces:
+                    FaceDetector.build_regions(f, out.shape)
+                    out = EYES.remove_red_eye(out, f, p["redeye"])
+                return out
+            work = stage("redeye", _redeye)
+            info["applied"].append("redeye")
 
         beach_keys = ["beach_debris", "beach_flatten", "beach_warm"]
         if any(p.get(k) for k in beach_keys):

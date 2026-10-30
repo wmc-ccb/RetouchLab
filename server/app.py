@@ -296,6 +296,8 @@ PARAM_SPEC = [
     _p("teethDeYellow", "牙齿祛黄", 0, 100, 0, "五官"),
     _p("eyelid_tape", "祛双眼皮贴", 0, 100, 0, "五官",
        "软化眼睑上方的贴纸线，保留自然褶皱"),
+    _p("redeye", "去红眼", 0, 100, 0, "五官",
+       "闪光灯红眼自动修复，检测不到红簇时不动"),
     # ---- 美型 reshape ---------------------------------------------------
     _p("slimFace", "瘦脸", 0, 100, 0, "美型"),
     _p("jaw", "下颌", 0, 100, 0, "美型"),
@@ -3525,6 +3527,7 @@ class BatchRequest(BaseModel):
     naming: str = "{原名}_out"        # {原名}/{序号3}/{日期}/{时间}/{预设}
     size_w: int = 0                   # 尺寸模板：0 = 原尺寸
     size_h: int = 0
+    format: str = "jpg"               # jpg | png | tiff
 
 
 @app.post("/api/batch")
@@ -3617,9 +3620,13 @@ def batch_start(req: BatchRequest):
         else:
             dest_dir = req.out_dir
         os.makedirs(dest_dir, exist_ok=True)
-        dest = os.path.join(dest_dir, name + ".jpg")
-        with open(dest, "wb") as fh:
-            fh.write(encode_jpeg(out, q))
+        # 格式：jpg(有损小)/png(无损)/tiff(印刷)，save_image 按扩展名选编码
+        fmt = (req.format or "jpg").lower()
+        if fmt not in ("jpg", "jpeg", "png", "tif", "tiff"):
+            fmt = "jpg"
+        dest = os.path.join(dest_dir, name + "." + fmt)
+        from engine.imgutil import save_image
+        save_image(dest, out, q)
         return dest
 
     run = BT.start(paths, req.out_dir, label, int(req.long_edge),
