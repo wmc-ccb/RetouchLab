@@ -48,6 +48,36 @@ SERVER = os.environ.get(
 CHECKPOINT = "sd15_inpaint.ckpt"
 CONTROLNET = "control_v11p_sd15_inpaint_fp16.safetensors"
 
+# ---- FLUX.1 Fill 高质量档（可选） ----------------------------------------
+# 模型 ~11GB 需单独下载（放 ComfyUI/models/ 对应子目录），主包与生成式
+# 安装包都不含；文件级探测，缺哪个 UI 指引点名。
+FLUX_UNET = "flux1-fill-dev.safetensors"
+FLUX_CLIP1 = "clip_l.safetensors"
+FLUX_CLIP2 = "t5xxl_fp16.safetensors"
+FLUX_VAE = "ae.safetensors"
+
+
+def flux_missing() -> list:
+    """缺的 FLUX 模型文件（相对 ComfyUI/models/ 的子路径）；空 = 全就绪。"""
+    try:
+        from .comfy_mgr import find_comfy_dir
+        d = find_comfy_dir()
+        if not d:
+            return ["ComfyUI 目录未找到（tools/install_generative.py 可装）"]
+        base = os.path.join(d, "ComfyUI", "models")
+        return ["%s/%s" % (sub, name)
+                for sub, name in (("diffusion_models", FLUX_UNET),
+                                  ("clip", FLUX_CLIP1),
+                                  ("clip", FLUX_CLIP2),
+                                  ("vae", FLUX_VAE))
+                if not os.path.isfile(os.path.join(base, sub, name))]
+    except Exception:
+        return ["ComfyUI 目录未找到"]
+
+
+def flux_available() -> bool:
+    return not flux_missing()
+
 
 _AVAIL_CACHE = {"at": 0.0, "ok": False}
 _AVAIL_TTL = 30.0
@@ -123,7 +153,51 @@ def _build_graph(img_ref: str, mask_ref: str, prompt: str, negative: str,
     * `sdxl`（质量）——DiffusersLoader 加载 models/diffusers/sdxl-inpainting/
       （fp16 全套），1024px 工作尺度，无 ControlNet（SDXL inpainting
       checkpoint 本身以 masked latent 训练，加 ControlNet 反而牵制细节）。
+    * `flux`（最高质量，可选）——FLUX.1 Fill Dev：UNETLoader 加载
+      diffusion_models/ 里的 flux1-fill-dev，DualCLIPLoader (clip_l +
+      t5xxl)，FluxGuidance 定引导，CFG 固定 1.0（FLUX guidance-distilled，
+      负提示不参与采样）。生成质量/文字结构理解明显好于 SD1.5。
+      需 ~11GB 模型（flux_missing() 点名缺什么）。
     """
+    if model == "flux":
+        if flux_missing():
+            raise ValueError("FLUX 模型未就绪: " + ", ".join(flux_missing()))
+        return {
+            "1": {"class_type": "LoadImage", "inputs": {"image": img_ref}},
+            "2": {"class_type": "LoadImageMask",
+                  "inputs": {"image": mask_ref, "channel": "red"}},
+            "3": {"class_type": "UNETLoader",
+                  "inputs": {"unet_name": FLUX_UNET,
+                             "weight_dtype": "default"}},
+            "4": {"class_type": "DualCLIPLoader",
+                  "inputs": {"clip_name1": FLUX_CLIP1,
+                             "clip_name2": FLUX_CLIP2,
+                             "type": "flux"}},
+            "5": {"class_type": "VAELoader",
+                  "inputs": {"vae_name": FLUX_VAE}},
+            "6": {"class_type": "CLIPTextEncode",
+                  "inputs": {"text": prompt, "clip": ["4", 0]}},
+            "7": {"class_type": "CLIPTextEncode",
+                  "inputs": {"text": negative, "clip": ["4", 0]}},
+            "8": {"class_type": "InpaintModelConditioning",
+                  "inputs": {"positive": ["6", 0], "negative": ["7", 0],
+                             "vae": ["5", 0], "pixels": ["1", 0],
+                             "mask": ["2", 0], "noise_mask": True}},
+            "9": {"class_type": "FluxGuidance",
+                  "inputs": {"conditioning": ["6", 0], "guidance": 30.0}},
+            "10": {"class_type": "KSampler",
+                   "inputs": {"seed": int(seed), "steps": max(12, steps),
+                              "cfg": 1.0, "sampler_name": "euler",
+                              "scheduler": "simple", "denoise": 1.0,
+                              "model": ["3", 0], "positive": ["9", 0],
+                              "negative": ["8", 1],
+                              "latent_image": ["8", 2]}},
+            "11": {"class_type": "VAEDecode",
+                   "inputs": {"samples": ["10", 0], "vae": ["5", 0]}},
+            "12": {"class_type": "SaveImage",
+                   "inputs": {"images": ["11", 0],
+                              "filename_prefix": "zhajinwenqian_flux"}},
+        }
     if model == "sdxl":
         return {
             "1": {"class_type": "LoadImage", "inputs": {"image": img_ref}},
@@ -225,10 +299,11 @@ def fill(img: np.ndarray, mask: np.ndarray,
 
     `mask` is float32 [0,1]; values above 0.5 are replaced and its soft edge
     feathers the paste. Frames are downscaled to the model's training scale
-    for generation (sd15: 768 long edge; sdxl: 1024) and the result is
+    for generation (sd15: 768 long edge; sdxl/flux: 1024) and the result is
     upscaled back — a pass through the ZhaJinWenQianCake superres model can lift
     the generated region further when needed.
-    `model`: "sd15"（快，~10s）或 "sdxl"（质量，~30-60s，纹理细节明显更好）。
+    `model`: "sd15"（快，~10s）、"sdxl"（质量，~30-60s）或
+    "flux"（最高质量，可选档，模型 ~11GB 需单独下载）。
     Returns (composited image, info).
     """
     import cv2
@@ -237,11 +312,11 @@ def fill(img: np.ndarray, mask: np.ndarray,
 
     if img.shape[:2] != mask.shape[:2]:
         raise ValueError("image and mask must match")
-    if model not in ("sd15", "sdxl"):
+    if model not in ("sd15", "sdxl", "flux"):
         raise ValueError(f"unknown model: {model}")
 
     h, w = img.shape[:2]
-    work = 1024.0 if model == "sdxl" else 768.0
+    work = 768.0 if model == "sd15" else 1024.0
     scale = min(1.0, work / max(h, w))
     if scale < 1.0:
         nw = max(8, int(round(w * scale)) // 8 * 8)

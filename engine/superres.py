@@ -29,9 +29,14 @@ from typing import Optional, Tuple
 import numpy as np
 
 from .paths import models_dir
+import threading
 
 _MODEL = None
 _MODEL_PATH = None
+# 模型加载 + 推理全程串行：torch 模块的 forward 不保证线程安全，
+# 而 upscale 已任务化（两个并发任务会对同一 net 同时 forward）；
+# GPU 场景本来也该排队，内存场景串行只是慢不是错。
+_INFERENCE_LOCK = threading.Lock()
 
 
 def model_path() -> str:
@@ -161,6 +166,17 @@ def _infer(net, arr: np.ndarray) -> np.ndarray:
 
 def upscale(img: np.ndarray, tile: int = 256, overlap: int = 32,
             progress=None) -> np.ndarray:
+    """Upscale 4x，全程持推理锁：并发任务排队执行。
+
+    torch 的 forward 不保证线程安全，而 upscale 已任务化（多个 job
+    会对同一 net 同时 forward）。GPU 本该排队，CPU 串行只是慢不是错。
+    """
+    with _INFERENCE_LOCK:
+        return _upscale_tiles(img, tile, overlap, progress)
+
+
+def _upscale_tiles(img: np.ndarray, tile: int = 256, overlap: int = 32,
+                   progress=None) -> np.ndarray:
     """Upscale a float32 RGB image 4x, tiled to bound memory.
 
     A tile of 256 at the model's 4x gives 1024px tiles, which is where the

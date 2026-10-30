@@ -1314,26 +1314,104 @@ def history_state(sid: str):
 
 class UpscaleRequest(BaseModel):
     session: str
-    # 0 = full resolution; a positive value caps the *input* long edge, which
-    # is how a caller keeps a 4x run inside a memory budget
     tile: int = 256
     overlap: int = 32
-    # write the upscaled result into a file (the preview is far too large to
-    # return as base64 for a 24 MP frame)
-    path: str = ""
+    path: Optional[str] = None
     quality: int = 95
     commit: bool = False
+    job: bool = False              # true = 后台跑, 用 job id 轮询进度
+
+
+# 超清任务表：100-150 秒的重活必须有进度，否则用户以为死机。
+_UPSCALE_JOBS: Dict[str, dict] = {}
+_UPSCALE_JOBS_LOCK = threading.Lock()
+
+
+def _upscale_job_status(j: dict) -> dict:
+    return {k: j[k] for k in ("phase", "pct", "done", "total", "error")}
+
+
+@app.get("/api/upscale/job/{job_id}")
+def upscale_job(job_id: str):
+    with _UPSCALE_JOBS_LOCK:
+        j = _UPSCALE_JOBS.get(job_id)
+        if j is None:
+            raise HTTPException(404, "job not found")
+        st = _upscale_job_status(j)
+        if j["phase"] == "done":
+            st.update(width=j["width"], height=j["height"], ms=j["ms"],
+                      path=j["path"], scale=4)
+        return JSONResponse(st)
+
+
+@app.post("/api/upscale/job/{job_id}/cancel")
+def upscale_job_cancel(job_id: str):
+    with _UPSCALE_JOBS_LOCK:
+        j = _UPSCALE_JOBS.get(job_id)
+        if j is None:
+            raise HTTPException(404, "job not found")
+        j["cancel"] = True
+    return JSONResponse({"ok": True})
 
 
 @app.post("/api/upscale")
 def upscale(req: UpscaleRequest):
-    """4x super-resolution (Real-ESRGAN), tiled, saved to disk."""
+    """4x super-resolution (Real-ESRGAN), tiled, saved to disk.
+
+    `job=true` 时转后台任务并返回 job_id：超清是 100-150 秒的重活，
+    同步 HTTP 会把前端吊在半空，进度用 /api/upscale/job/{id} 轮询。
+    """
     from engine import superres as SR
     from engine.imgutil import save_image
 
     s = _get_session(req.session)
     if not SR.available():
         raise HTTPException(503, "super-resolution model not installed")
+
+    if req.job:
+        job_id = uuid.uuid4().hex[:12]
+        with _UPSCALE_JOBS_LOCK:
+            _UPSCALE_JOBS[job_id] = {"phase": "running", "pct": 0,
+                                     "done": 0, "total": 0, "error": "",
+                                     "width": 0, "height": 0, "ms": 0,
+                                     "path": None, "cancel": False}
+        # 只留最近 4 个任务（每个带 384MP 级结果的元数据，不大）
+        with _UPSCALE_JOBS_LOCK:
+            while len(_UPSCALE_JOBS) > 4:
+                _UPSCALE_JOBS.popitem(last=False)
+
+        def _work():
+            with _UPSCALE_JOBS_LOCK:
+                j = _UPSCALE_JOBS[job_id]
+            try:
+                def _progress(done, total):
+                    with _UPSCALE_JOBS_LOCK:
+                        j["done"], j["total"] = done, total
+                        j["pct"] = int(done * 100 / max(total, 1))
+                        if j["cancel"]:
+                            raise RuntimeError("用户取消")
+                src = s["full"] if s.get("full") is not None else s["preview"]
+                t0 = time.time()
+                out = SR.upscale(src, tile=int(max(64, req.tile)),
+                                 overlap=int(max(8, req.overlap)),
+                                 progress=_progress)
+                ms = int((time.time() - t0) * 1000)
+                saved = None
+                if req.path:
+                    saved = save_image(req.path, out,
+                                       int(max(50, min(100, req.quality))))
+                if req.commit:
+                    s["preview"] = out
+                with _UPSCALE_JOBS_LOCK:
+                    j.update(phase="done", width=int(out.shape[1]),
+                             height=int(out.shape[0]), ms=ms, path=saved)
+            except Exception as exc:
+                with _UPSCALE_JOBS_LOCK:
+                    j.update(phase="error",
+                             error=str(exc)[:200])
+
+        threading.Thread(target=_work, daemon=True).start()
+        return JSONResponse({"job": job_id})
 
     src = s["full"] if s.get("full") is not None else s["preview"]
     t0 = time.time()
@@ -1443,8 +1521,16 @@ class GenRequest(BaseModel):
     # fill/prop 的手涁mask（base64 PNG，可选）
     mask_png: str = ""
     commit: bool = False
-    # 生成模型：sdxl（质量，默认）或 sd15（快速）
+    # 生成模型：sdxl（质量，默认）/ sd15（快速）/ flux（最高质量，需 11GB 模型）
     model: str = "sdxl"
+
+
+@app.get("/api/gen/flux_status")
+def gen_flux_status():
+    """FLUX 高质量档可用性 + 缺失模型点名（面板档位 UI 的数据源）。"""
+    from engine import genfill
+    missing = genfill.flux_missing()
+    return JSONResponse({"available": not missing, "missing": missing})
 
 
 @app.post("/api/gen")

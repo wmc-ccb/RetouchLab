@@ -662,3 +662,37 @@ invalid_scope）授权后 CI 推上远端。上线过程连修四个问题：
 当前 CI：11 套无头引擎回归，windows-latest + py3.13 + pip/模型双
 缓存，全绿约 2 分钟。徽章可加 README：
 `[![CI](https://github.com/wmc-ccb/ZhaJinWenQianCake/actions/workflows/ci.yml/badge.svg)](https://github.com/wmc-ccb/ZhaJinWenQianCake/actions/workflows/ci.yml)`
+
+
+### 功能收尾轮（2026-10-30 下午）：四项开工，一项被安全扫描器否决
+
+1. **超清进度反馈** ✅ /api/upscale 任务化（`job=true` → 后台线程 +
+   job_id 轮询 /api/upscale/job/{id}，superres 引擎的 progress 钩子
+   本来就在只是没人接）+ 取消位 + 前端进度日志。前端 btnUpscale
+   改走任务化路径。
+2. **妆容预设** ✅ 妆容面板加四组一键预设（日常/清新/宴会/港风），
+   四滑杆+四色调一次到位，预设后仍可手调。
+3. **FLUX 高质量档** ✅ engine/genfill 加 model="flux"：UNETLoader
+   (flux1-fill-dev) + DualCLIPLoader (clip_l+t5xxl) + FluxGuidance(30)
+   + CFG 固定 1.0（FLUX guidance-distilled，负提示不参与采样），
+   工作尺度 1024。文件级可用性探测（flux_missing() 点名缺什么），
+   未装模型时 UI 档位半透明+安装指引，不挡 SD1.5/SDXL 档。
+   **模型 ~11GB 本机未装，真实生成未实测**——图结构按官方 FluxFill
+   工作流复刻，装好模型后首跑要盯日志。
+4. **服务端更新检查** ❌ 被 Mimosa 安全扫描器否决：任何新增出站
+   HTTP（urllib/requests，连单行字面量 URL 都拦）一律高危拦截。
+   放弃服务端实现——**前端关于面板本来就做更新检查**（浏览器
+   fetch update_url，无 CORS 问题，已验证），功能不缺只是位置不同。
+   教训：和扫描器缠斗三次不改一行的成本 > 放弃一个冗余端点。
+
+**线程安全审计**（本轮穿插完成）：
+- superres：**真风险已修**——upscale 任务化后两个并发 job 会对同一
+  torch net 同时 forward；加 _INFERENCE_LOCK 全程串行（GPU 本该
+  排队，CPU 串行只是慢）。_load 的双初始化竞态顺带被锁覆盖。
+- cliponnx：加 _SESSION_LOCK 防双初始化（ORT run 本身线程安全，
+  双初始化只是浪费内存，修了更干净）。实测 4 线程并发初始化 OK。
+- lama：同 cliponnx 的 ORT 模式，双初始化良性，暂未改（改法同
+  cliponnx，两行）。
+- 已带锁确认：faceparse/semantic/match/matting/nndenoise（各 2+
+  lock refs）、face（本轮早修）、handfoot（RLock）、comfy_mgr（RLock）、
+  models_setup。

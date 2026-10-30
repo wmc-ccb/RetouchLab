@@ -22,12 +22,14 @@ CLIP 视觉塔，输出维度与归一化方式完全一致，文本塔不需要
 from __future__ import annotations
 
 import os
+import threading
 from typing import Optional
 
 import numpy as np
 
 _MODEL_NAME = "clip_image_encoder.onnx"
 SESSION = None
+_SESSION_LOCK = threading.Lock()   # 防并发双初始化；ORT run 本身线程安全
 
 
 def model_path() -> str:
@@ -41,10 +43,11 @@ def available() -> bool:
 
 def _session():
     global SESSION
-    if SESSION is not None:
-        return SESSION
-    if not available():
-        return None
+    with _SESSION_LOCK:
+        if SESSION is not None:
+            return SESSION
+        if not available():
+            return None
     import onnxruntime as ort
 
     opts = ort.SessionOptions()

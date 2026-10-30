@@ -3636,6 +3636,33 @@ function renderPortrait(kind) {
   }
 
   if (kind === 'makeup') {
+    // 一键妆容预设：四个滑杆 + 四个色调一次到位（值即配方，可再手调）
+    const MAKEUP_PRESETS = [
+      ['日常妆', { lip: 35, lip_tone: 'nude', blush: 25, blush_tone: 'peach',
+                   shadow: 20, shadow_tone: 'nude', brow: 30, brow_tone: 'brick' }],
+      ['清新妆', { lip: 25, lip_tone: 'coral', blush: 30, blush_tone: 'coral',
+                   shadow: 15, shadow_tone: 'peach', brow: 20, brow_tone: 'nude' }],
+      ['宴会妆', { lip: 70, lip_tone: 'berry', blush: 45, blush_tone: 'rose',
+                   shadow: 55, shadow_tone: 'plum', brow: 55, brow_tone: 'brick' }],
+      ['港风妆', { lip: 80, lip_tone: 'berry', blush: 55, blush_tone: 'rose',
+                   shadow: 40, shadow_tone: 'plum', brow: 65, brow_tone: 'brick' }],
+    ];
+    const prow = document.createElement('div');
+    prow.className = 'presetRow';
+    prow.style.marginBottom = '4px';
+    prow.innerHTML = MAKEUP_PRESETS.map(([n], i) =>
+      '<button class="chip mkPre" data-i="' + i + '">' + n + '</button>').join('');
+    wrap.appendChild(prow);
+    prow.querySelectorAll('.mkPre').forEach(b => {
+      b.onclick = () => {
+        Object.assign(st, MAKEUP_PRESETS[+b.dataset.i][1]);
+        prow.querySelectorAll('.mkPre').forEach(x => x.style.borderColor = '');
+        b.style.borderColor = 'var(--gold)';
+        renderPortrait('makeup');
+        requestPortrait();
+      };
+    });
+
     const tones = ['coral', 'rose', 'peach', 'berry', 'nude', 'brick', 'plum'];
     [['lip', '唇彩', 'lip_tone'], ['blush', '腮红', 'blush_tone'],
      ['shadow', '眼影', 'shadow_tone'], ['brow', '眉毛', 'brow_tone']]
@@ -3924,7 +3951,7 @@ async function exportAutoMask(mode) {
 // 启动命令而不是死按钮。
 const GEN = { feature: 'backdrop', prompt: '', strength: 1.0,
   svc: { ready: false, starting: false, comfy_dir: null, timer: null },
-  autoRetried: false };
+  model: 'sdxl', fluxReady: null, autoRetried: false };
 
 // 场景预设：中文按钮 → 英文 prompt（SD1.5 只懂英文，替用户写好，
 // 不写 prompt 也能一键出效果）
@@ -4041,6 +4068,41 @@ function renderGen() {
     '<span class="bstat" id="genInfo" style="flex:1"></span>';
   wrap.appendChild(acts);
 
+  // ---- 模型档位：快速(SD1.5) / 质量(SDXL, 默认) / FLUX(最高, 可选) ----
+  const mrow = document.createElement('div');
+  mrow.className = 'presetRow';
+  mrow.innerHTML = '<span class="bstat" style="width:52px">模型</span>' +
+    '<button class="chip genM" data-m="sd15">快速 SD1.5</button>' +
+    '<button class="chip genM" data-m="sdxl">质量 SDXL</button>' +
+    '<button class="chip genM" data-m="flux" id="genFluxBtn">FLUX 高质量</button>';
+  wrap.appendChild(mrow);
+  const fluxHint = document.createElement('div');
+  fluxHint.className = 'bstat';
+  fluxHint.id = 'genFluxHint';
+  wrap.appendChild(fluxHint);
+  const setModel = (m) => {
+    GEN.model = m;
+    mrow.querySelectorAll('.genM').forEach(x =>
+      x.style.borderColor = x.dataset.m === m ? 'var(--gold)' : '');
+    if (m === 'flux' && GEN.fluxReady === false) {
+      fluxHint.textContent = 'FLUX 模型未安装（~11GB）：把 flux1-fill-dev.safetensors 放 ComfyUI/models/diffusion_models/，clip_l+t5xxl 放 clip/，ae.safetensors 放 vae/';
+    } else {
+      fluxHint.textContent = m === 'flux' ? 'FLUX 档：质量最高，单张约 1-2 分钟' :
+        (m === 'sd15' ? '快速档：单张约 10 秒' : '质量档：单张约 30-60 秒');
+    }
+  };
+  fetch('/api/gen/flux_status').then(r => r.json()).then(j => {
+    GEN.fluxReady = !!j.available;
+    if (!GEN.fluxReady) {
+      const b = mrow.querySelector('#genFluxBtn');
+      if (b) b.style.opacity = '0.5';
+    }
+    setModel(GEN.model);
+  }).catch(() => setModel(GEN.model));
+  mrow.querySelectorAll('.genM').forEach(b => {
+    b.onclick = () => setModel(b.dataset.m);
+  });
+
   const view = document.createElement('div');
   view.id = 'genView';
   view.style.cssText = 'margin-top:8px;text-align:center';
@@ -4107,7 +4169,8 @@ async function runGen() {
     const r = await fetch('/api/gen', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session: S.session, feature: GEN.feature,
-        prompt: GEN.prompt, strength: GEN.strength, mask_png: maskB64 }) });
+        prompt: GEN.prompt, strength: GEN.strength, mask_png: maskB64,
+        model: GEN.model || 'sdxl' }) });
     const j = await r.json();
     if (!r.ok) {
       // 503 = AI 服务在启动：轮询到就绪自动重试一次，用户只觉得"多等了一会"
@@ -7381,15 +7444,32 @@ $('btnUpscale').onclick = async () => {
   if (!path) return;
   setBusy(true);
   try {
+    // 任务化 + 进度轮询：超清 100-150 秒，没有进度就是"死机"体感
     const r = await fetch('/api/upscale', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session: S.session, tile: 256, overlap: 32,
-                             path: path }),
+                             path: path, job: true }),
     });
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.statusText);
-    log('超清 4× 完成：' + j.width + '×' + j.height + ' · ' +
-        (j.ms / 1000).toFixed(1) + ' 秒 → ' + j.path);
+    const jobId = j.job;
+    let last = 0;
+    while (true) {
+      await new Promise(res => setTimeout(res, 1200));
+      const st = await fetch('/api/upscale/job/' + jobId)
+        .then(x => x.json());
+      if (st.phase === 'error') throw new Error(st.error || '任务失败');
+      if (st.pct !== last) {
+        last = st.pct;
+        log('超清进度：' + st.pct + '%（' + st.done + '/' + st.total +
+            ' 块）');
+      }
+      if (st.phase === 'done') {
+        log('超清 4× 完成：' + st.width + '×' + st.height + ' · ' +
+            (st.ms / 1000).toFixed(1) + ' 秒 → ' + st.path);
+        break;
+      }
+    }
   } catch (e) { log('超清失败：' + e.message); }
   finally { setBusy(false); }
 };
