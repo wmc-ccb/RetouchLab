@@ -36,7 +36,10 @@ excludes = [
     # 训练侧代码不随发行版走
     "training",
     # 常见误入包：体积大、与功能无关
-    "matplotlib", "pandas", "IPython", "jupyter", "notebook",
+    # **matplotlib 不能排除**：mediapipe.tasks.python.vision 的 import
+    # 链无条件经过 drawing_styles → matplotlib，排掉它打包版的
+    # 语义分割（automask/换天空分割）全部崩（暴力测试抓到的发行 bug）
+    "pandas", "IPython", "jupyter", "notebook",
     "pytest", "pydoc_data", "tkinter", "test",
     "PyQt5", "PyQt6", "PySide2", "PySide6",
     # torch 里只给训练/导出用的子模块

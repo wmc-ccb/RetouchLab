@@ -28,7 +28,9 @@ def exposure(img: np.ndarray, amount: float) -> np.ndarray:
     """Exposure compensation in stops, scaled from a -100..100 slider."""
     if amount == 0:
         return img.copy()
-    stops = amount / 100.0 * 2.0          # +/- 2 stops at the extremes
+    # 防御性钳制 ±4 stops：API 层虽有 spec 钳制，引擎不该假设调用方
+    # 守规矩（暴力测试实测 1e9 会让 2.0**stops 在标量幂上 OverflowError）
+    stops = max(-4.0, min(4.0, amount / 100.0 * 2.0))
     lin = srgb_to_linear(img)
     lin = lin * (2.0 ** stops)
     return linear_to_srgb(lin)

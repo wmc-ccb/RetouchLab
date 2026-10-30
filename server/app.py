@@ -660,8 +660,29 @@ async def upload(file: UploadFile = File(...)):
     })
 
 
+# 参数边界表：滑动杆的合法范围。API 是公开边界，外部可以发任何数值
+# （暴力测试实测 exposure=1e9 会让 tone.exposure 的标量幂直接
+# OverflowError -> 500），所以在入口统一钳制到 spec 范围。
+_PARAM_RANGE = {p["key"]: (p["min"], p["max"]) for p in PARAM_SPEC}
+
+
+def _clamp_params(params: Optional[dict]) -> Optional[dict]:
+    if not params:
+        return params
+    out = {}
+    for k, v in params.items():
+        if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                and k in _PARAM_RANGE:
+            lo, hi = _PARAM_RANGE[k]
+            out[k] = max(lo, min(hi, float(v)))
+        else:
+            out[k] = v
+    return out
+
+
 @app.post("/api/render")
 def render(req: RenderRequest):
+    req.params = _clamp_params(req.params)
     s = _get_session(req.session)
     src = s["preview"]
 
@@ -1549,6 +1570,10 @@ def gen(req: GenRequest):
 
     s = _get_session(req.session)
     img = s["preview"]
+    # 输入校验先于 AI 服务检查：坏 feature/坏 mask 无论服务在不在都
+    # 应 400，而不是被"启动中 503"掩盖。
+    if req.feature not in ("backdrop", "fill", "prop"):
+        raise HTTPException(400, "未知功能: " + req.feature)
     # AI 服务懒启动：没就绪时后台拉起并让前端等就绪重试，而不是把
     # 「去开终端」这个用户（打包版根本没有 Python）做不到的事甩回给他。
     from engine import comfy_mgr
@@ -1558,8 +1583,15 @@ def gen(req: GenRequest):
         raise HTTPException(503, "AI 服务正在启动，请稍候片刻再点生成")
     mask = None
     if req.mask_png:
-        arr = np.frombuffer(b64.b64decode(req.mask_png), np.uint8)
-        dec = _cv.imdecode(arr, _cv.IMREAD_GRAYSCALE)
+        try:
+            arr = np.frombuffer(b64.b64decode(req.mask_png), np.uint8)
+            if arr.size == 0:
+                raise HTTPException(400, "mask_png 为空")
+            dec = _cv.imdecode(arr, _cv.IMREAD_GRAYSCALE)
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(400, "mask_png 不是合法的 base64/图片")
         if dec is not None:
             mask = _cv.resize(dec, (img.shape[1], img.shape[0]),
                               interpolation=_cv.INTER_LINEAR)
@@ -1896,6 +1928,7 @@ def remove(req: RemoverRequest):
     diffusion invents new content (a different backdrop). Picking the wrong one
     gives smudge or nothing at all.
     """
+    import cv2
     from engine.imgutil import load_image, fit_long_edge
 
     s = _get_session(req.session)
@@ -1906,9 +1939,17 @@ def remove(req: RemoverRequest):
     h, w = img.shape[:2]
     mask = None
     if req.mask_png:
-        raw = base64.b64decode(req.mask_png)
-        arr = np.frombuffer(raw, np.uint8)
-        dec = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+        try:
+            raw = base64.b64decode(req.mask_png)
+            arr = np.frombuffer(raw, np.uint8)
+            # imdecode 对空 buffer 会断言崩溃而不是返回 None，先拦
+            if arr.size == 0:
+                raise HTTPException(400, "mask_png 为空")
+            dec = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(400, "mask_png 不是合法的 base64/图片")
         if dec is None:
             raise HTTPException(400, "mask_png could not be decoded")
         if dec.ndim == 3:
@@ -3521,7 +3562,7 @@ def batch_start(req: BatchRequest):
         fixed = None            # resolved per file below
         label = "配方 " + req.formula
     elif req.params is not None:
-        fixed = dict(req.params)
+        fixed = _clamp_params(dict(req.params))
 
     q = int(max(50, min(100, req.quality)))
 
@@ -3691,22 +3732,32 @@ def fill(req: FillRequest):
     from engine import comfy_mgr
     from engine import genfill
 
-    if not genfill.available():
-        # 懒启动 + 明确告知（与 /api/gen 同一套语义）
-        comfy_mgr.start(background=True)
-        raise HTTPException(503, "AI 服务正在启动，请稍候片刻再试")
     s = _get_session(req.session)
     img = s["preview"]
 
-    data = _b64.b64decode(req.mask_png)
-    arr = np.frombuffer(data, np.uint8)
-    bgr = _cv2.imdecode(arr, _cv2.IMREAD_COLOR)
+    # 先校验输入再谈 AI 服务：坏 mask 无论 ComfyUI 在不在都应 400，
+    # 而不是被"服务未启动 503"抢先掩盖真实问题。
+    try:
+        data = _b64.b64decode(req.mask_png)
+        arr = np.frombuffer(data, np.uint8)
+        if arr.size == 0:
+            raise HTTPException(400, "mask_png 为空")
+        bgr = _cv2.imdecode(arr, _cv2.IMREAD_COLOR)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(400, "mask_png 不是合法的 base64/图片")
     if bgr is None:
         raise HTTPException(400, "mask_png did not decode")
     mask = _cv2.cvtColor(bgr, _cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
     if mask.shape[:2] != img.shape[:2]:
         mask = _cv2.resize(mask, (img.shape[1], img.shape[0]),
                            interpolation=_cv2.INTER_AREA)
+
+    if not genfill.available():
+        # 懒启动 + 明确告知（与 /api/gen 同一套语义）
+        comfy_mgr.start(background=True)
+        raise HTTPException(503, "AI 服务正在启动，请稍候片刻再试")
 
     try:
         out, info = genfill.fill(

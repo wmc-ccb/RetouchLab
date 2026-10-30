@@ -51,7 +51,12 @@ def _semantic_masks(img: np.ndarray) -> Dict[str, np.ndarray]:
 
     if not SEM.available():
         return {}
-    reg = SEM.segment(img)
+    # 语义模型 import/推理失败（如发行包组件缺失）必须优雅降级到
+    # 几何蒙版——暴力测试抓到过这里把 500 直接抛给前端。
+    try:
+        reg = SEM.segment(img)
+    except Exception:
+        return {}
     if reg is None:
         return {}
     out = {}
