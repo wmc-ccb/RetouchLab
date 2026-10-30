@@ -158,17 +158,17 @@ README = """ZhaJinWenQianCake 使用说明
 =========================
 
 【启动】
-  双击 ZhaJinWenQianCake.exe —— 会打开独立的应用窗口（不是浏览器）。
+  双击 ZhaJinWenQianCake.exe —— 打开独立的应用窗口。
 
   第一次启动要读取模型，先显示启动页十几秒，属正常现象。
   关闭应用窗口 = 退出程序。
 
   兼容说明：应用窗口用的是系统自带的 WebView2（Win10/11 内置）。
-  极老的系统没有它时会自动改用浏览器打开，功能完全一样。
+  极老的系统若缺失它，启动时会弹窗给出运行时下载链接。
 
 【目录说明】
   models\\    模型文件（不可删除；想换模型直接替换同名文件）
-  web\\       前端页面
+  ui\\        应用界面资源
   data\\      你的数据（预设、图库来源、导出记录）
   out\\       日志和临时输出
 
@@ -181,12 +181,6 @@ README = """ZhaJinWenQianCake 使用说明
   没有 ComfyUI 时，其余全部功能正常，只是这三个工具会提示未安装。
   默认的「祛路人」「消除」走 LaMa，不需要 ComfyUI。
 
-【局域网 / 手机访问】
-  建一个快捷方式，目标后面加上 --lan（注意前面有空格）：
-      ...\\ZhaJinWenQianCake.exe --lan
-  然后手机连同一个 Wi-Fi，浏览器访问启动日志(out\\launcher.log)
-  里的局域网地址。电脑上仍是应用窗口，不受影响。
-
 【卸载】
   删除整个文件夹即可，不写注册表。
 
@@ -195,12 +189,9 @@ README = """ZhaJinWenQianCake 使用说明
   或：
   1. 看 out\\launcher.log —— 启动阶段的问题
   2. 看 out\\error.log   —— 运行中接口报错（含完整堆栈）
-  3. 浏览器打开 http://127.0.0.1:8765/api/diagnose
-     —— 一次性列出运行环境：是否打包运行、Python 版本、
-        torch/CUDA 是否真的能用（会实际跑一次 GPU 运算）、
-        8 个模型文件是否就位。
+  3. 界面「?」面板里的诊断信息与 out\\error.log 内容一致。
 
-  常见的「超清很慢」：如果 diagnose 里 gpu_works 是 false，
+  常见的「超清很慢」：如果诊断里 gpu_works 是 false，
   说明显卡没被用上，会退回 CPU（慢 10 倍以上）。
 """
 
@@ -222,8 +213,8 @@ def main():
         DIST, "（lite：模型改为首次启动下载）" if lite else ""))
 
     # 1) 运行时资源
-    n = copytree(os.path.join(ROOT, "web"), os.path.join(DIST, "web"))
-    print("  web/      %d 个文件" % n)
+    n = copytree(os.path.join(ROOT, "ui"), os.path.join(DIST, "ui"))
+    print("  ui/       %d 个文件" % n)
 
     if lite:
         # 瘦身版：模型不随包（省 ~1GB），清单随包，首次启动 UI 引导下载

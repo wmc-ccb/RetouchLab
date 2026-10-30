@@ -6,15 +6,15 @@
     源码运行
       <root>/engine/paths.py      <- __file__
       <root>/models/*.onnx
-      <root>/web/index.html
+      <root>/ui/index.html
 
     PyInstaller onedir
       <dist>/ZhaJinWenQianCake/ZhaJinWenQianCake.exe
       <dist>/ZhaJinWenQianCake/_internal/engine/...   (打包进去的代码)
       <dist>/ZhaJinWenQianCake/models/...              (运行时目录，可写)
-      <dist>/ZhaJinWenQianCake/web/...                 (运行时目录，可写)
+      <dist>/ZhaJinWenQianCake/ui/...                  (运行时目录，可写)
 
-所以**模型和 web 资源一律放在 exe 旁边的可写目录**（不要打进 _internal），
+所以**模型和界面资源一律放在 exe 旁边的可写目录**（不要打进 _internal），
 理由：
   1. 模型近 1GB，放进 _internal 每次都要跟 exe 一起被校验/复制
   2. 生成式组件包是后装的，必须能往这个目录里加东西
@@ -41,7 +41,7 @@ def _exe_dir() -> str:
 
 
 def home() -> str:
-    """运行时根目录（放 models/ web/ data/ out/ 的地方）。"""
+    """运行时根目录（放 models/ ui/ data/ out/ 的地方）。"""
     env = os.environ.get("RETOUCHLAB_HOME", "").strip()
     if env:
         return os.path.abspath(env)
@@ -52,8 +52,8 @@ def models_dir() -> str:
     return os.path.join(home(), "models")
 
 
-def web_dir() -> str:
-    return os.path.join(home(), "web")
+def ui_dir() -> str:
+    return os.path.join(home(), "ui")
 
 
 def data_dir() -> str:

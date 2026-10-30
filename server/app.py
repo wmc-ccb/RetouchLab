@@ -41,7 +41,7 @@ from engine.face import FaceDetector
 from engine import rawio
 from engine.rawio import RAW_EXTENSIONS
 from engine import formula as formula_engine
-from engine.paths import web_dir as _web_dir, data_dir as _data_dir
+from engine.paths import ui_dir as _ui_dir, data_dir as _data_dir
 from engine.paths import register_cuda_dlls as _register_cuda
 
 # 早于任何 torch 使用：把 torch/lib 加进 DLL 搜索路径。
@@ -53,8 +53,8 @@ except Exception:
     pass
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# WEB_DIR：打包后 web/ 在 exe 旁边；源码运行时在项目根。走 paths 统一解析。
-WEB_DIR = _web_dir()
+# UI_DIR：打包后 ui/ 在 exe 旁边；源码运行时在项目根。走 paths 统一解析。
+UI_DIR = _ui_dir()
 # 可写的状态文件统一放 data/：装到 Program Files 时 exe 目录不可写，
 # 写在 exe 旁边会直接崩在"保存预设"这种小操作上。
 DATA_DIR = _data_dir()
@@ -494,7 +494,7 @@ def _get_session(sid: str) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    path = os.path.join(WEB_DIR, "index.html")
+    path = os.path.join(UI_DIR, "index.html")
     if not os.path.exists(path):
         return HTMLResponse("<h1>ZhaJinWenQianCake</h1><p>web/index.html missing</p>", 500)
     with open(path, "r", encoding="utf-8") as fh:

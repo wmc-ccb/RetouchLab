@@ -19,7 +19,7 @@ HERE = ROOT
 
 # ---- 收集数据文件 ----
 datas = [
-    (os.path.join(HERE, "web"), "web"),
+    (os.path.join(HERE, "ui"), "ui"),
 ]
 
 # ---- 明确排除的大件 ----

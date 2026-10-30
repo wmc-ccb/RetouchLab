@@ -1,21 +1,22 @@
 # -*- coding: utf-8 -*-
-"""ZhaJinWenQianCake 启动器（桌面应用模式）。
+"""ZhaJinWenQianCake 启动器（桌面应用，唯一形态）。
 
 双击 exe（或 `python tools/launch.py`）的完整流程：
 
   1. 单实例检查 —— 已有实例在跑就直接开一个新窗口贴上去，不重复起服务
   2. 挑一个可用端口（8765 被占就往后找）
   3. 起服务（后台线程）
-  4. **弹原生应用窗口**（pywebview / WebView2，Win10/11 自带运行时），
+  4. 弹原生应用窗口（pywebview / WebView2，Win10/11 自带运行时），
      先显示加载页，服务就绪后自动载入界面
   5. 关窗口 = 退应用：停服务、顺手停掉自己拉起的 ComfyUI、进程干净退出
 
-兼容与兜底：
-  - 没有 WebView2 的老系统（或 pywebview 加载失败）自动退回系统浏览器，
-    行为与旧版一致，绝不让用户面对"闪退"。
-  - --browser 强制浏览器模式；--lan 监听局域网（手机/平板仍用浏览器访问）。
-  - 无控制台（打包 windowed）时，致命错误写 out/launcher.log 并弹
-    MessageBox 告知，不搞无声闪退。
+产品决定（2026-10-31）：**只做应用，不做网页**。
+- 不再有浏览器兜底：WebView2 缺失时弹窗给出运行时下载链接，
+  而不是退回浏览器打开一个网页。
+- 不再提供 --lan / --browser 参数。需要局域网/公网访问的部署
+  （如 start_network.bat 隧道工作流）直接跑 uvicorn，不经过本启动器。
+- 无控制台（打包 windowed）时，致命错误写 out/launcher.log 并弹
+  MessageBox 告知，不搞无声闪退。
 """
 import argparse
 import os
@@ -40,6 +41,7 @@ LOG_DIR = os.path.join(ROOT, "out")
 LOG_PATH = os.path.join(LOG_DIR, "launcher.log")
 DEFAULT_PORT = 8765
 WINDOW_TITLE = "炸金文谦蛋糕 — 人像精修"
+WEBVIEW2_URL = "https://developer.microsoft.com/microsoft-edge/webview2/"
 
 LOADING_HTML = """<!doctype html><html><head><meta charset="utf-8">
 <style>
@@ -54,7 +56,7 @@ border-radius:50%;margin-bottom:22px;animation:r 1s linear infinite}
 @keyframes r{to{transform:rotate(360deg)}}
 </style></head><body>
 <div class="spin"></div>
-<div class="logo">炸金文谦蛋糕<span>Lab</span></div>
+<div class="logo">炸金文谦<span>蛋糕</span></div>
 <div class="tip">正在启动引擎与模型，首次约 10~30 秒…</div>
 </body></html>"""
 
@@ -80,8 +82,8 @@ def fatal(msg):
         try:
             import ctypes
             ctypes.windll.user32.MessageBoxW(
-                0, "ZhaJinWenQianCake 启动失败：\n\n%s\n\n详情见 out\\launcher.log"
-                % msg, "ZhaJinWenQianCake", 0x10)
+                0, "ZhaJinWenQianCake 启动失败：\n\n%s\n\n详情见 "
+                "out\\launcher.log" % msg, "ZhaJinWenQianCake", 0x10)
         except Exception:
             pass
 
@@ -99,7 +101,7 @@ def is_our_service(port):
     """端口上跑的是不是 ZhaJinWenQianCake（而不是别的程序）。
 
     判据要**足够严**：只看 "ok" 字段会把任何返回 {"ok":true} 的服务
-    误认成自己。同时要求 3 个 ZhaJinWenQianCake 特有字段。
+    误认成自己。同时要求 3 个本应用特有字段。
     """
     try:
         import json
@@ -120,7 +122,7 @@ def pick_port(preferred):
     """优先用首选端口；被别的程序占了就往后找。
 
     返回 (port, reusable)：reusable 为 True 表示该端口上已经是
-    ZhaJinWenQianCake 自己，调用方应直接开窗口而不是再起一个实例。
+    本应用自己，调用方应直接开窗口而不是再起一个实例。
     """
     if not port_in_use(preferred):
         return preferred, False
@@ -162,7 +164,8 @@ def open_window(url, port, own_service, server=None):
     try:
         import webview
     except Exception as e:
-        log("pywebview 不可用（%s），退回浏览器模式" % e)
+        fatal("应用窗口组件（pywebview）缺失：%s。请重新解压发行包，"
+              "或安装 pywebview。" % e)
         return False
 
     win = webview.create_window(
@@ -189,7 +192,10 @@ def open_window(url, port, own_service, server=None):
         # webview.start 必须在主线程（Win32 消息循环），返回 = 窗口已关
         webview.start(gui="edgechromium")
     except Exception as e:
-        log("窗口创建失败（%s），退回浏览器模式" % e)
+        # WebView2 运行时缺失是最常见原因：给出修复路径而不是退回网页
+        fatal("应用窗口创建失败（%s）。\n\n"
+              "请安装 Microsoft WebView2 运行时后重试：\n%s"
+              % (str(e)[:120], WEBVIEW2_URL))
         return False
 
     # ---- 窗口关闭：干净收尾 ----
@@ -209,56 +215,30 @@ def open_window(url, port, own_service, server=None):
     return True
 
 
-def open_browser(url, port, delay_hint=0.0):
-    import webbrowser
-
-    def work():
-        if delay_hint:
-            time.sleep(delay_hint)
-        if wait_until_ready(port):
-            log("服务就绪，打开浏览器: %s" % url)
-            try:
-                webbrowser.open(url)
-            except Exception as e:
-                log("打开浏览器失败（%s），请手动访问 %s" % (e, url))
-        else:
-            log("等待服务就绪超时；请手动访问 %s" % url)
-    threading.Thread(target=work, daemon=True).start()
-
-
 def main():
     ap = argparse.ArgumentParser(description="ZhaJinWenQianCake launcher")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--browser", action="store_true",
-                    help="用系统浏览器而不是应用窗口")
-    ap.add_argument("--lan", action="store_true",
-                    help="监听 0.0.0.0，允许局域网访问")
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="服务监听地址（默认本机回环；局域网/隧道部署"
+                         "直接跑 uvicorn，不经本启动器）")
     args = ap.parse_args()
 
-    host = "0.0.0.0" if args.lan else args.host
     port, reusable = pick_port(args.port)
     url = "http://127.0.0.1:%d/" % port
 
     log("ZhaJinWenQianCake 启动中（Python %s）" % sys.version.split()[0])
     log("目录: %s" % ROOT)
 
-    # ---- 已经有实例在跑：贴一个新窗口/开浏览器，不重复起服务 ----
+    # ---- 已经有实例在跑：贴一个新窗口，不重复起服务 ----
     if reusable:
         log("复用已运行的服务 %s" % url)
-        if not args.browser and open_window(url, port, own_service=False):
-            return 0
-        import webbrowser
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
+        open_window(url, port, own_service=False)
         return 0
 
     if port != args.port:
         log("端口 %d 被占用，改用 %d" % (args.port, port))
 
-    # ---- 起服务（后台线程；窗口/浏览器在前面走） ----
+    # ---- 起服务（后台线程；窗口在前面走） ----
     try:
         import uvicorn
     except Exception as e:
@@ -271,11 +251,11 @@ def main():
         nonlocal server
         try:
             import server.app as APP
-            config = uvicorn.Config(APP.app, host=host, port=port,
+            config = uvicorn.Config(APP.app, host=args.host, port=port,
                                     log_level="warning", access_log=False)
             server = uvicorn.Server(config)
-            # 非主线程：uvicorn 会跳过信号捕获（源码已处理），Ctrl+C
-            # 语义由窗口关闭代替
+            # 非主线程：uvicorn 会跳过信号捕获（源码已处理），退出语义
+            # 由窗口关闭代替
             server.run()
         except Exception as e:
             log("服务崩溃：%r" % (e,))
@@ -286,17 +266,9 @@ def main():
 
     threading.Thread(target=_serve, daemon=True).start()
 
-    if not args.browser and open_window(url, port, own_service=True,
-                                        server=server):
+    if open_window(url, port, own_service=True, server=server):
         return 0
-    # 浏览器兜底路径（无 WebView2 / --browser）
-    open_browser(url, port)
-    try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        log("收到中断，退出")
-    return 0
+    return 1
 
 
 if __name__ == "__main__":
