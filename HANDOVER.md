@@ -633,3 +633,32 @@ engine/pipeline.py 的 DEFAULTS 为准，不是只看记忆）。真正新做的
    同一把锁 → 自死锁。惰性单例 + 包装函数同持一把锁时用 RLock。
 3. 凸包外扩 `np.stack(两个(N,2))` 造出 (N,2,2)，fillPoly 断言失败——
    坐标变换写完后 print shape 再继续。
+
+
+### CI 上线（2026-10-30）：三天修三连环，上岗即立功
+
+`gh auth refresh -h github.com -s workflow`（**单数 workflow**，复数是
+invalid_scope）授权后 CI 推上远端。上线过程连修四个问题：
+
+1. **中文文件名被转义**：git_backup_push 用 `git ls-tree` 默认输出
+   （非 ASCII 被 quote 成 `"ä..."` 八进制转义显示串）当路径传
+   trees API，远端建出带引号的非法 Windows 文件名 → checkout 报
+   invalid path。**修法：`ls-tree -r -z`（NUL 分隔永不转义）**。
+   此前的 blob 级验证之所以"通过"，是因为本地比对也用了同样的
+   显示串——路径比较必须用真字节。
+2. runner stdout 默认 cp1252，脚本打中文直接 UnicodeEncodeError →
+   workflow 顶层 `PYTHONUTF8=1` + `PYTHONIOENCODING=utf-8`。
+3. 全新 checkout 没有 data/、out/：formula 保存/geoface、locality
+   渲染产物全部 FileNotFoundError → workflow 加「准备可写目录」步。
+   （engine/formula.py 的 mkdir 引擎级修复被 Mimosa 扫描器反复拦，
+   暂由 CI 目录步覆盖；dist 发行包 assemble 时本来就建了这两目录，
+   真用户不受影响。）
+4. **CI 上岗第一天抓到真产品 bug**：`ai_denoise` 的保底引导滤波
+   `_guided_rgb` 在 2D 亮度引导 × 3D 源图时广播崩溃——本机有
+   torch 从走神经网络路径，保底路径从未执行过；无 torch 机器
+   （requirements.txt 本来就不含 torch！）拉 AI 降噪滑杆即崩。
+   修：引导升维 (H,W)→(H,W,1)。
+
+当前 CI：11 套无头引擎回归，windows-latest + py3.13 + pip/模型双
+缓存，全绿约 2 分钟。徽章可加 README：
+`[![CI](https://github.com/wmc-ccb/ZhaJinWenQianCake/actions/workflows/ci.yml/badge.svg)](https://github.com/wmc-ccb/ZhaJinWenQianCake/actions/workflows/ci.yml)`
