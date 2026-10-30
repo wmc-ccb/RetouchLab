@@ -1,5 +1,7 @@
 # ZhaJinWenQianCake
 
+[![CI](https://github.com/wmc-ccb/ZhaJinWenQianCake/actions/workflows/ci.yml/badge.svg)](https://github.com/wmc-ccb/ZhaJinWenQianCake/actions/workflows/ci.yml)
+
 **自主研发的本地人像修图项目**：人像精修引擎 + 桌面应用。
 全部代码、模型选型与素材从零实现与整理，不含任何第三方商业产品的
 代码、模型或素材。
