@@ -9,6 +9,11 @@ jobs:
   engine-tests:
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      # runner 的 stdout 默认 cp1252，脚本里的中文输出会直接
+      # UnicodeEncodeError；全链强制 UTF-8。
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
 
