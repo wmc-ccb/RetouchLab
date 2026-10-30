@@ -371,6 +371,43 @@ def even_skin_tone(img: np.ndarray, mask: np.ndarray, amount: float = 0.0) -> np
 # eye area  ("removeEyeBag_keepSilkworm")
 # --------------------------------------------------------------------------
 
+def eyelid_tape_soften(img: np.ndarray, face: Face, degree: float = 0.0,
+                       texture_keep: float = 40.0) -> np.ndarray:
+    """祛双眼皮贴：压掉眼睑上方条带里的贴纸高频线，保留低频结构。
+
+    贴纸的本质是一条贴上去的高对比直线（贴纸边缘 + 投影），在频域里
+    是局部高频；而天生的双眼皮褶是宽而柔和的低频阴影。频率分离后把
+    条带内的高频按 `degree` 衰减，褶皱还在（低频），贴纸线消失（高频）。
+
+    `texture_keep`（0-100）控制留多少自然纹理：默认 40 —— 全压会变成
+    "塑料眼皮"。
+    """
+    if degree <= 0 or not face.eyes:
+        return img.copy()
+    h, w = img.shape[:2]
+    k = float(np.clip(degree / 100.0, 0.0, 1.0))
+    band = np.zeros((h, w), np.float32)
+    for (ex, ey, ew, eh) in face.eyes:
+        # (ex, ey) 是眼盒中心。贴纸贴在睫毛线上方的眼睑上：竖向从
+        # 眼眶上缘再上探 0.85 倍眼高（眉眼间的 tape 区），下探 0.25
+        # 倍眼高盖住睫毛线上缘；横向覆盖眼宽 ±15%。
+        eye_top = ey - eh * 0.5
+        y0 = int(max(0, eye_top - 0.85 * eh))
+        y1 = int(min(h, eye_top + 0.25 * eh))
+        x0 = int(max(0, ex - 0.15 * ew)); x1 = int(min(w, ex + 1.15 * ew))
+        if x1 > x0 and y1 > y0:
+            band[y0:y1, x0:x1] = 1.0
+    if not band.any():
+        return img.copy()
+    band = cv2.GaussianBlur(band, (0, 0), max(1.5, w / 600.0))
+    radius = max(2.0, w / 250.0)
+    low, high = split_frequencies(img, radius)
+    keep = float(np.clip(texture_keep, 0, 100)) / 100.0
+    fixed = low + high * (1.0 - (1.0 - keep) * k)
+    m = band[..., None]
+    return img * (1 - m) + fixed * m
+
+
 def eye_bag_reduction(img: np.ndarray, face: Face, degree: float = 0.0,
                       keep_silkworm: float = 0.0) -> np.ndarray:
     """Lighten the under-eye shadow while optionally preserving the lower lid roll.

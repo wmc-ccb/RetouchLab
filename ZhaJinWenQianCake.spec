@@ -80,7 +80,8 @@ hidden = [
     # engine 各模块（被动态 import 的）
     "engine.autofix", "engine.automask", "engine.batch", "engine.bgclean",
     "engine.brush", "engine.cattree", "engine.cliponnx", "engine.comfy_mgr",
-    "engine.models_setup",
+    "engine.models_setup", "engine.handfoot", "engine.beach",
+    "engine.objectpick", "engine.skintone", "engine.exportfx",
     "engine.crop",
     "engine.curves", "engine.defringe", "engine.eyes", "engine.face",
     "engine.faceparse", "engine.formula", "engine.genfill", "engine.gentools",

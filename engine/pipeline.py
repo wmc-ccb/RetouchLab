@@ -69,6 +69,13 @@ DEFAULTS: Dict[str, float] = {
     "ai_denoise": 0.0, "ai_denoise_strength": 50.0,
     # optics
     "distortion": 0.0, "vignetting": 0.0, "vignetting_midpoint": 50.0, "ca_amount": 0.0,
+    # 手足美化 / 鞋子祛瑕疵（handfoot: 检测命中才生效，掩膜外不变）
+    "hand_smooth": 0.0, "hand_tone": 0.0,
+    "foot_smooth": 0.0, "foot_tone": 0.0, "shoe_clean": 0.0,
+    # 祛双眼皮贴（眼睑条带高频衰减）
+    "eyelid_tape": 0.0,
+    # 沙滩美化（beach: 沙面掩膜内祛杂物/平整/暖调）
+    "beach_debris": 0.0, "beach_flatten": 0.0, "beach_warm": 0.0,
     # grain
     "grain_amount": 0.0, "grain_size": 25.0, "grain_roughness": 50.0,
     "grain_shadows": 0.0, "grain_midtones": 0.0, "grain_highlights": 0.0,
@@ -482,6 +489,74 @@ class RetouchPipeline:
             info["applied"].append("skin")
             if sem is not None:
                 info["skin_gate"] = "semantic"
+
+        # ---- 手足美化 / 鞋子祛瑕疵 / 祛双眼皮贴 / 沙滩美化 ----------------
+        # 全部是"掩膜内修、掩膜外不动"的局部操作，排在主肤质之后，
+        # 让全局光影调色在它们之后统一作用。
+        hand_keys = ["hand_smooth", "hand_tone"]
+        foot_keys = ["foot_smooth", "foot_tone", "shoe_clean"]
+        if any(p.get(k) for k in hand_keys + foot_keys):
+            def _hands_feet():
+                from . import handfoot as HF
+                from .pose import pick_primary
+                out = work
+                marks = []
+                if any(p.get(k) for k in hand_keys):
+                    out, nh = HF.beautify_hands(
+                        out, smooth=p["hand_smooth"] / 100.0,
+                        tone=p["hand_tone"] / 100.0)
+                    marks.append("hands:%d" % nh)
+                if any(p.get(k) for k in foot_keys):
+                    pose = body_pose
+                    if pose is None and detect:
+                        est = self.pose_estimator()
+                        if est is not None:
+                            pose = pick_primary(est.detect(out))
+                    if pose is not None:
+                        # Pose.landmarks 是归一化坐标 → 像素
+                        pts = pose.landmarks * np.array(
+                            [out.shape[1], out.shape[0], 1.0])
+                        if p.get("foot_smooth") or p.get("foot_tone"):
+                            out, nf = HF.beautify_feet(
+                                out, pts,
+                                smooth=p["foot_smooth"] / 100.0,
+                                tone=p["foot_tone"] / 100.0)
+                            marks.append("feet:%d" % nf)
+                        if p.get("shoe_clean"):
+                            out, ns = HF.clean_shoes(
+                                out, pts,
+                                strength=p["shoe_clean"] / 100.0)
+                            marks.append("shoes:%d" % ns)
+                    else:
+                        marks.append("feet:no-pose")
+                info["hands_feet"] = marks
+                return out
+            work = stage("hands_feet", _hands_feet)
+            info["applied"].append("hands_feet")
+
+        if p.get("eyelid_tape") and faces:
+            def _eyelid():
+                out = work
+                for f in faces:
+                    FaceDetector.build_regions(f, out.shape)
+                    out = S.eyelid_tape_soften(out, f, p["eyelid_tape"])
+                return out
+            work = stage("eyelid_tape", _eyelid)
+            info["applied"].append("eyelid_tape")
+
+        beach_keys = ["beach_debris", "beach_flatten", "beach_warm"]
+        if any(p.get(k) for k in beach_keys):
+            def _beach():
+                from . import beach as BH
+                out, binfo = BH.beautify(
+                    work,
+                    debris=p["beach_debris"] / 100.0,
+                    flatten=p["beach_flatten"] / 100.0,
+                    warm=p["beach_warm"] / 100.0)
+                info["beach"] = binfo
+                return out
+            work = stage("beach", _beach)
+            info["applied"].append("beach")
 
         # ---- subject weighting -------------------------------------------
         # A portrait retouch should leave the background essentially alone. A
