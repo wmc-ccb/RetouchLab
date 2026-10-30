@@ -305,17 +305,21 @@ def main():
                               ".dataset && document.querySelector("
                               "'.mode.active').dataset.mode")
                 check("切到%s模块" % cat, active == mode, str(active))
-            # 单层导航：图库模块只显示库相关分类（图库/批处理/历史/联机）
+            # 二级导航：图库模块的一级 rail 收敛为大组+预设（图库在
+            # 自定义组里），精修模块恢复全部大组
             b.js("setMode('library')")
             time.sleep(1.0)
-            cats_lib = b.js("[...document.querySelectorAll('#rail .rbtn')]"
-                            ".map(function(e){return e.dataset.cat})")
+            cats_lib = b.js("[...document.querySelectorAll('#rail .rbtn, "
+                            "#rail .rgroup')].map(function(e){"
+                            "return e.dataset.cat || e.dataset.group})")
             check("图库模块分类收敛", isinstance(cats_lib, list) and
-                  len(cats_lib) <= 6 and "图库" in cats_lib, str(cats_lib))
+                  len(cats_lib) <= 14 and "预设" in cats_lib, str(cats_lib))
             b.js("setMode('retouch')")
             time.sleep(1.0)
-            cats_ret = b.js("document.querySelectorAll('#rail .rbtn').length")
-            check("精修模块分类齐全", (cats_ret or 0) >= 30, "%s 个" % cats_ret)
+            groups_ret = b.js(
+                "document.querySelectorAll('#rail .rgroup').length")
+            check("精修模块分类齐全", (groups_ret or 0) >= 10,
+                  "%s 组" % groups_ret)
 
             # 缩放
             z0 = b.js("(function(){var c=document.getElementById('canvas');"

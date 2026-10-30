@@ -79,13 +79,14 @@ def main():
           film_vis)
     cols2 = c.js("document.getElementById('rail').classList.contains('cols2')")
     check("desktop: rail uses two-column layout", cols2 is True, str(cols2))
-    # 现在是一次点击直达：栏上列出全部工具（45 项）+ 预设 = 46。
-    # 准确项数由 /api/cats 的分组表决定，不写死。
+    # 二级导航：一级 rail 只列大组（预设直达 + 13 组 = 14）。
+    # 组数由 /api/cats 的分组表决定，不写死。
     tree = requests.get("http://127.0.0.1:8765/api/cats",
                         timeout=60).json().get("tree") or {}
-    expected_tabs = 1 + sum(len(v) for v in tree.values())
-    check("desktop: icon rail has all categories", tabs == expected_tabs,
-          "%d buttons (expect %d)" % (tabs, expected_tabs))
+    expected_groups = 1 + len(tree)
+    check("desktop: icon rail has all categories", tabs == expected_groups,
+          "%d buttons (expect %d = 预设 + %d 组)"
+          % (tabs, expected_groups, len(tree)))
 
     # open a params group and count sliders
     n_sliders = c.js("""

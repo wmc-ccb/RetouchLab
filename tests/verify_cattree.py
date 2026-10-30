@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""分类结构：单层导航（一次点击直达）+ 服务端分组表.
+"""分类结构：二级导航（一级大组 + 飞出子项）+ 服务端分组表.
 
 历史演进（这个测试锁定当前决定）：
-  1. 平铺 34 项  -> 一屏放不下，要滚 1.8 屏
-  2. 两级折叠    -> 要先想"属于哪个父类"再点两次，反而更累
-  3. 单层 + 双列 + 不可点的分组标题  <- 现在
+  1. 平铺 34 项        -> 一屏放不下，要滚 1.8 屏
+  2. 两级折叠          -> 要先想"属于哪个父类"再点两次，反而更累
+  3. 单层 + 双列 + 分组标题 -> 46 个按钮看花眼
+  4. 二级导航（一级大组 + 飞出子项，selectCat 直调自动展开）<- 现在
 """
 import base64
 import json
@@ -37,8 +38,6 @@ def main():
     j = requests.get(B + "/api/cats", timeout=60).json()
     tree = j.get("tree") or {}
     check("13 个分组", list(tree.keys()) == PARENTS, str(list(tree.keys())))
-    # 自动蒙版 + 色阶 + 换天空 + 补草地 后 39 项，
-    # 加「生成式」（AI 布景 / 创成式填充 / 道具修复）3 项 = 45
     check("子项总数 45", sum(len(v) for v in tree.values()) == 45,
           "%d" % sum(len(v) for v in tree.values()))
 
@@ -68,52 +67,49 @@ def main():
              deviceScaleFactor=1, mobile=False)
         call("Page.reload")
         time.sleep(4)
+        js("localStorage.setItem('rl_onboarded','1');"
+           "homeDismiss && homeDismiss();")
 
-        print("\n=== 单层结构 ===")
-        check("无可展开父类",
-              js("[...document.querySelectorAll('#rail .rbtn')]"
-                 ".filter(function(b){return !!b.dataset.parent}).length") == 0)
-        titles = js("[...document.querySelectorAll('#rail .catTitle')]"
-                    ".map(function(e){return e.textContent})")
-        # 宠物组现在有「宠物修整」，不再是空分组
-        check("分组标题含宠物",
-              isinstance(titles, list) and "宠物" in titles, str(titles))
-        check("分组标题数量合理", isinstance(titles, list) and
-              8 <= len(titles) <= 13, "%s 个" % len(titles or []))
+        print("\n=== 一级结构 ===")
+        groups = js("[...document.querySelectorAll('#rail .rgroup')]"
+                    ".map(function(b){return b.dataset.group})")
+        check("一级大组与分组表一致",
+              isinstance(groups, list) and groups == PARENTS, str(groups))
+        kids_on_rail = js("[...document.querySelectorAll('#rail .rbtn')]"
+                          ".filter(function(b){return b.dataset.cat;"
+                          "}).length")
+        check("一级只保留预设直达", kids_on_rail == 1, "%s 个" % kids_on_rail)
 
-        # 所有子项一屏可达
-        cats = js("[...document.querySelectorAll('#rail .rbtn')]"
-                  ".map(function(b){return b.dataset.cat})")
-        total_kids = sum(len(v) for v in tree.values())
-        check("所有子项都在栏上", isinstance(cats, list) and
-              len([c for c in cats if c != '预设']) == total_kids,
-              "%d/%d" % (len(cats or []) - 1, total_kids))
+        print("\n=== 二级展开 ===")
+        # 每个大组都能弹出自己的子项，数量与分组表一致
+        for parent in ("人像", "调色", "图像"):
+            js("(function(){var b=document.querySelector("
+               "'#rail .rgroup[data-group=\"%s\"]'); if(b) b.click();"
+               "})()" % parent)
+            time.sleep(0.35)
+            nsub = js("document.querySelectorAll('#railFly .flyBtn').length")
+            check("「%s」弹出子项" % parent,
+                  nsub == len(tree.get(parent, [])),
+                  "%s/%s" % (nsub, len(tree.get(parent, []))))
+            js("(function(){var b=document.querySelector("
+               "'#rail .rgroup[data-group=\"%s\"]'); if(b) b.click();"
+               "})()" % parent)
+            time.sleep(0.2)
 
-        print("\n=== 一屏放得下 ===")
-        geo = js("""
-          (function(){
-            var rail=document.getElementById('rail');
-            var r=rail.getBoundingClientRect();
-            return {cols2: rail.classList.contains('cols2'),
-                    railH: Math.round(r.height),
-                    scrollH: Math.round(rail.scrollHeight),
-                    fits: rail.scrollHeight <= r.height + 6};
-          })()
-        """)
-        check("宽屏启用双列", geo and geo.get("cols2") is True)
-        check("右侧栏一屏放下", geo and geo.get("fits") is True,
-              "内容 %spx / 可见 %spx" % (geo.get("scrollH"),
-                                        geo.get("railH")))
-
-        print("\n=== 一次点击直达 ===")
-        for key in ("美肤", "曲线", "证件照", "图库"):
-            js("(function(){var bs=[...document.querySelectorAll("
-               "'#rail .rbtn')];var b=bs.find(function(x){"
-               "return x.dataset.cat==='%s'});if(b) b.click();"
+        print("\n=== 二级点选开面板 ===")
+        for key, parent in (("美肤", "人像"), ("曲线", "调色"),
+                            ("证件照", "图像"), ("图库", "自定义")):
+            js("(function(){var b=document.querySelector("
+               "'#rail .rgroup[data-group=\"%s\"]'); if(b) b.click();"
+               "})()" % parent)
+            time.sleep(0.3)
+            js("(function(){var b=[...document.querySelectorAll("
+               "'#railFly .flyBtn')].find(function(x){"
+               "return x.dataset.cat==='%s'}); if(b) b.click();"
                "return true;})()" % key)
             time.sleep(0.9)
             cur = js("document.getElementById('sideCat').textContent")
-            check("点「%s」直达" % key, cur == key, str(cur))
+            check("二级点选「%s」开面板" % key, cur == key, str(cur))
 
         # requestRender 的按需重绘会让 Chrome 合成器忙到截图排不上队
         # （verify_levels 实测：patch 成 no-op 后 0.1s 出图）。

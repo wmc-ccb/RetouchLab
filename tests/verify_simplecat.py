@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""单层分类导航：一次点击直达 + 分组标题视觉分隔.
+"""二级分类导航：一级大组 + 飞出子项列表（与参考软件同构）.
 
-历史：先做过平铺（34 项、要滚）、又做过两级（父类→子项、点两次要想），
-现在是一屏列全 + 不可点的分组标题。这个测试锁定"单层"这个决定：
-右栏不应再出现需要展开的父类按钮。
+历史：平铺（34 项要滚）→ 单层+分组标题（一屏直达但 46 个按钮看花眼）
+→ 现在回到两级：一级 rail 只列大组，点组在 rail 旁弹出二级子项列表，
+点子项开面板；selectCat 直调（热键/脚本）自动展开对应组的二级列表。
+本测试锁定"二级"这个决定与它的关键不变量。
 """
 import base64
 import json
@@ -53,53 +54,62 @@ def main():
          deviceScaleFactor=1, mobile=False)
     call("Page.reload")
     time.sleep(4)
+    js("localStorage.setItem('rl_onboarded','1'); homeDismiss && homeDismiss();")
 
-    print("=== 单层结构 ===")
-    # 不应该再有可展开的父类按钮
-    parents = js("[...document.querySelectorAll('#rail .rbtn')]"
-                 ".filter(function(b){return !!b.dataset.parent}).length")
-    check("无可展开父类按钮", parents == 0, "%s 个" % parents)
-    # 分组标题存在且不可点
-    titles = js("[...document.querySelectorAll('#rail .catTitle')]"
-                ".map(function(e){return e.textContent})")
-    check("有分组标题", isinstance(titles, list) and len(titles) >= 5,
-          str(titles))
-    title_clickable = js("(function(){var e=document.querySelector("
-                         "'#rail .catTitle');"
-                         "return e ? getComputedStyle(e).cursor : 'none';})()")
-    check("标题不是按钮（无 pointer 光标）",
-          title_clickable not in ("pointer",), str(title_clickable))
+    print("=== 一级结构 ===")
+    groups = js("[...document.querySelectorAll('#rail .rgroup')]"
+                ".map(function(b){return b.dataset.group})")
+    check("一级只列大组", isinstance(groups, list) and 10 <= len(groups) <= 14,
+          "%s 个: %s" % (len(groups or []), groups))
+    flat_kids = js("[...document.querySelectorAll('#rail .rbtn')]"
+                   ".filter(function(b){return b.dataset.cat==='美肤'||"
+                   "b.dataset.cat==='光影'||b.dataset.cat==='细节'}).length")
+    check("一级不再平铺子项", flat_kids == 0, "%s 个" % flat_kids)
+    preset1 = js("[...document.querySelectorAll('#rail .rbtn')]"
+                 ".some(function(b){return b.dataset.cat==='预设';})")
+    check("预设一级直达", preset1 is True)
 
-    # 关健功能应**一次点击**可达
-    cats = js("[...document.querySelectorAll('#rail .rbtn')]"
-              ".map(function(b){return b.dataset.cat})")
-    for want in ("预设", "光影", "美肤", "曲线", "裁剪", "背景消除", "证件照",
-                 "图库", "历史", "联机"):
-        check("一屏直达「%s」" % want, isinstance(cats, list) and want in cats)
+    print("\n=== 二级行为 ===")
+    js("(function(){var b=document.querySelector("
+       "'#rail .rgroup[data-group=\"人像\"]'); if(b) b.click();})()")
+    time.sleep(0.4)
+    fly_on = js("!!document.getElementById('railFly')")
+    nsub = js("document.querySelectorAll('#railFly .flyBtn').length")
+    check("点组弹出二级列表", fly_on is True and (nsub or 0) >= 3,
+          "子项 %s" % nsub)
+    js("(function(){var b=[...document.querySelectorAll('#railFly .flyBtn')]"
+       ".find(function(x){return x.dataset.cat==='美肤'}); if(b) b.click();})()")
+    time.sleep(1.0)
+    check("点子项开美肤面板",
+          js("document.getElementById('sideCat').textContent") == "美肤")
+    check("子项高亮同步", js(
+        "(function(){var b=document.querySelector('#railFly .flyBtn.active');"
+        "return b?b.dataset.cat:'none';})()") == "美肤")
+    check("组按钮高亮同步", js(
+        "(function(){var b=document.querySelector('#rail .rgroup.active');"
+        "return b?b.dataset.group:'none';})()") == "人像")
+    js("(function(){document.querySelector('#rail .rgroup[data-group=\"人像\"]')"
+       ".click();})()")
+    time.sleep(0.3)
+    check("再点同组收起二级", js(
+        "!document.getElementById('railFly')") is True)
 
-    print("\n=== 点击行为 ===")
-    # 点「美肤」应立即切到美肤面板（一次点击）
-    js("(function(){var bs=[...document.querySelectorAll('#rail .rbtn')];"
-       "var b=bs.find(function(x){return x.dataset.cat==='美肤'});"
-       "if(b) b.click(); return true;})()")
-    time.sleep(1.2)
-    check("一次点击切到美肤",
-          js("document.getElementById('sideCat').textContent") == "美肤",
-          str(js("document.getElementById('sideCat').textContent")))
-    check("按钮高亮同步",
-          js("(function(){var bs=[...document.querySelectorAll("
-             "'#rail .rbtn')];var b=bs.find(function(x){"
-             "return x.dataset.cat==='美肤'});"
-             "return b?b.classList.contains('active'):false;})()") is True)
+    js("selectCat('曲线')")
+    time.sleep(0.4)
+    check("直调 selectCat 自动展开调色组", js(
+        "(function(){var f=document.getElementById('railFly');"
+        "return f?f.dataset.group:'none';})()") == "调色")
+    check("直调后子项高亮", js(
+        "(function(){var b=document.querySelector('#railFly .flyBtn.active');"
+        "return b?b.dataset.cat:'none';})()") == "曲线")
+    check("曲线面板已开", js(
+        "document.getElementById('sideCat').textContent") == "曲线")
 
-    # 宠物组现在有「宠物修整」（Round 22 起），应占位出现
-    pet = js("(function(){return [...document.querySelectorAll("
-             "'#rail .catTitle')].some(function(e){"
-             "return e.textContent==='宠物';});})()")
-    check("宠物分组占位（有宠物修整）", pet is True)
-    petkid = js("[...document.querySelectorAll('#rail .rbtn')]"
-                ".some(function(b){return b.dataset.cat==='宠物修整';})")
-    check("宠物修整直达", petkid is True)
+    js("selectCat('美肤')")
+    time.sleep(0.3)
+    pet = js("[...document.querySelectorAll('#rail .rgroup')]"
+             ".some(function(b){return b.dataset.group==='宠物';})")
+    check("宠物组占位（有宠物修整）", pet is True)
 
     shot = call("Page.captureScreenshot", format="png")
     with open(os.path.join(OUT, "ui_simplecat.png"), "wb") as fh:
