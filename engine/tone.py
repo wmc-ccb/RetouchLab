@@ -352,6 +352,11 @@ def noise_reduction(img: np.ndarray, luminance: float = 0.0,
 def _guided_rgb(guide: np.ndarray, src: np.ndarray, radius: int, eps: float) -> np.ndarray:
     from .imgutil import box
     g = guide.astype(np.float32)
+    if g.ndim == 2:
+        # 亮度引导是 (H,W)：升成 (H,W,1) 才能与 (H,W,3) 的源图广播。
+        # 此前 2D 引导 × 3D 源在 cov 一步直接崩——只在无 torch 的机器上
+        # 触发（有 torch 时走神经网络降噪，保底路径从未被执行过）。
+        g = g[..., None]
     p = src.astype(np.float32)
     mean_g = box(g, radius)
     mean_p = box(p, radius)
@@ -359,7 +364,7 @@ def _guided_rgb(guide: np.ndarray, src: np.ndarray, radius: int, eps: float) -> 
     var = box(g * g, radius) - mean_g * mean_g
     a = cov / (var + eps)
     b = mean_p - a * mean_g
-    return (box(a, radius) * g + box(b, radius)).astype(np.float32)
+    return (box(a, radius) * g + box(b, radius)).reshape(p.shape).astype(np.float32)
 
 
 def ai_denoise(img: np.ndarray, enabled: bool, strength: float = 50.0) -> np.ndarray:
