@@ -718,3 +718,21 @@ invalid_scope）授权后 CI 推上远端。上线过程连修四个问题：
   verify_ui / verify_newpanels 的按钮计数断言改大组计数。
 - 教训：截图捕获超时会留下**旧文件**，用测量数据（getBoundingClientRect）
   断言位置比目检截图可靠；但布局是否"好看"仍要看图。
+
+
+### 纯应用形态（2026-10-31，用户决定"不做网页，只做应用"）
+
+- **浏览器兜底移除**：WebView2 缺失时不再退回浏览器，改为弹窗给出
+  运行时下载链接（developer.microsoft.com/.../webview2）。
+- **--lan / --browser 参数移除**：产品不再提供任何"网页形态"入口。
+  **用户的公网隧道工作流不受影响**——start_network.bat 直跑
+  `uvicorn --host 0.0.0.0`（不经 launch.py），frp 隧道照常；
+  服务端的访问口令闸（RETOUCHLAB_PASSWD）也保留，因为隧道部署下
+  非回环访问仍需要它。
+- **web/ 目录改名 ui/**（paths.web_dir → ui_dir，server WEB_DIR →
+  UI_DIR，spec/assemble 同步）——仓库层面去掉"网页"痕迹。
+- 发行 README 移除局域网/手机访问章节；ui/ 目录说明替代 web/。
+
+教训：dist 被残留进程占用时 PyInstaller 清目录失败但 assemble 可能
+"成功"——**build 退出码必须检查**，坏了的 dist 打出的 zip 是空壳
+（本轮 1.28GB/0GB 的坏 zip 已重打）。
