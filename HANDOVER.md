@@ -696,3 +696,25 @@ invalid_scope）授权后 CI 推上远端。上线过程连修四个问题：
 - 已带锁确认：faceparse/semantic/match/matting/nndenoise（各 2+
   lock refs）、face（本轮早修）、handfoot（RLock）、comfy_mgr（RLock）、
   models_setup。
+
+
+### UI 重构（2026-10-31）：二级菜单 + 启动主界面（用户要求"改回一样的二级菜单和主界面"）
+
+- **二级菜单**：一级 rail 只列大组（13 组 + 预设直达），点组在 rail 左缘
+  弹出二级子项飞出层。两个语义要分开：**组按钮手点 = toggle**（再点同组
+  收起）；**selectCat 直调 = ensure**（自动展开对应组、绝不收起）——
+  链路上 selectCat('子项') 会进 syncRailGroup，若用 toggle 会把刚开的
+  列表又收掉（实测时序）。rgroup 的高亮必须排除在 selectCat 的
+  `.rbtn` toggle 循环之外（它没有 dataset.cat，toggle(false) 会抹掉
+  markGroupActive 刚加的 active）。
+- **飞出层定位**：rail 在窗口**右侧**（border-left 陷阱），飞出层要用
+  `right: var(--railW)` 贴其左缘——第一版用 left 定位直接飞到窗口
+  左边去了（截图目检抓到）。
+- **启动主界面**：未载图时 6 张工作流入口卡 + 品牌 logo（可点回主页）
+  + 跳过链接。离开时机：任何卡片/载图（drawBase 钩子）/切模块
+  （setMode 钩子）。有图在手刷新不再出现。
+- 测试契约同步：verify_simplecat / verify_cattree 重写为二级契约
+  （点组→子项→面板全链 + toggle 语义 + 直调自动展开）；
+  verify_ui / verify_newpanels 的按钮计数断言改大组计数。
+- 教训：截图捕获超时会留下**旧文件**，用测量数据（getBoundingClientRect）
+  断言位置比目检截图可靠；但布局是否"好看"仍要看图。
