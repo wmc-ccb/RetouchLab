@@ -688,6 +688,13 @@ def render(req: RenderRequest):
     s = _get_session(req.session)
     src = s["preview"]
 
+    # ---- 人脸检测缓存：Face 对象只依赖源图、与参数无关。色调/局部等
+    # 后段滑杆拖动时（最常见的连续操作）跳过 ~300ms 的检测段。
+    # 缓存键 = 源图版本（_commit 递增），任何破坏性操作后自然失效。
+    cached_faces = None
+    if s.get("_faces_ver") == s.get("render_ver", 0):
+        cached_faces = s.get("_faces")
+
     # ---- 渲染缓存：滑杆回拖/参数对比是最高频操作，全管线重跑 1-4s/次。
     # key 含会话版本（_commit 递增），源图一变就自然失效。
     cache_key = None
@@ -709,7 +716,15 @@ def render(req: RenderRequest):
         # 结果视觉上一致，但速度快一个数量级
         src = fit_long_edge(src, int(req.long_edge))
     t0 = time.perf_counter()
-    out, info = _pipe.run(src, req.params, detect=True)
+    out, info = _pipe.run(src, req.params, detect=True,
+                          faces=cached_faces)
+    # 续存人脸缓存（_faces_obj 是 Face 对象列表，内部用，不进 JSON）
+    new_faces = info.pop("_faces_obj", None)
+    if new_faces is not None:
+        s["_faces"] = new_faces
+    elif cached_faces is not None:
+        s["_faces"] = cached_faces
+    s["_faces_ver"] = s.get("render_ver", 0)
     ms = (time.perf_counter() - t0) * 1000
     payload = {
         "image": base64.b64encode(encode_jpeg(out, req.quality)).decode("ascii"),
@@ -3576,15 +3591,24 @@ def batch_start(req: BatchRequest):
 
     seq = [0]
 
-    def save_fn(path: str, params: dict) -> str:
+    # 批量预解码：RAW/大图解码是批处理最重的一步，batch 引擎会提前一张
+    # 解码并与推理重叠
+    def preload_fn(path: str):
+        src = load_image(path)
+        if req.long_edge:
+            from engine.imgutil import fit_long_edge
+            src = fit_long_edge(src, req.long_edge)
+        return src
+
+    def save_fn(path: str, params: dict, pre=None) -> str:
         import cv2 as _cv
 
         from engine import exportfx as FX
         from engine import formula as formula_engine
         from engine.imgutil import fit_long_edge
 
-        src = load_image(path)
-        if req.long_edge:
+        src = pre if pre is not None else load_image(path)
+        if req.long_edge and pre is None:
             src = fit_long_edge(src, req.long_edge)
         if req.formula:
             lib = formula_engine.load_library()
@@ -3630,7 +3654,7 @@ def batch_start(req: BatchRequest):
         return dest
 
     run = BT.start(paths, req.out_dir, label, int(req.long_edge),
-                   params_for, save_fn)
+                   params_for, save_fn, preload_fn=preload_fn)
     return JSONResponse({"id": run.id, "total": run.total, "recipe": label,
                          "out_dir": req.out_dir})
 

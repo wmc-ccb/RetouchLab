@@ -23,6 +23,7 @@ import threading
 import time
 import traceback
 import uuid
+from collections import OrderedDict
 from typing import Callable, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -59,6 +60,11 @@ def list_images(path: str, recursive: bool = False) -> List[str]:
 class BatchRun:
     """One background batch job, pollable by id."""
 
+    # 预解码缓存：loader 线程提前解码下一张（RAW 解码是批处理里很重的
+    # 一步），工作线程从这里取，实现"解码与推理重叠"。
+    # 只缓存 1 张（全尺寸 24MP float32 ≈ 288MB，多存会吃爆内存）。
+    _PRELOAD_MAX = 1
+
     def __init__(self, run_id: str, paths: Sequence[str], out_dir: str,
                  recipe_label: str, draft_edge: int = 0):
         self.id = run_id
@@ -77,6 +83,8 @@ class BatchRun:
         self.error: Optional[str] = None
         self.queued = False
         self._lock = threading.Lock()
+        self._preload: "OrderedDict[str, object]" = OrderedDict()
+        self._preload_lock = threading.Lock()
 
     # ---- reporting ------------------------------------------------------
     def snapshot(self) -> dict:
@@ -108,12 +116,15 @@ class BatchRun:
         self.cancelled = True
 
     # ---- execution ------------------------------------------------------
-    def run(self, params_for, save_fn) -> None:
+    def run(self, params_for, save_fn, preload_fn=None) -> None:
         """`params_for(path) -> dict` and `save_fn(path, img, params) -> str`.
 
         Kept as callables so this module owns the loop, the progress and the
         error isolation while the server owns how a file is decoded and where an
         output is written.
+
+        `preload_fn(path) -> decoded image`（可选）：后台 loader 线程提前
+        解码下一张，与本张的推理重叠。缓存只留 1 张。
         """
         # wait for any run already in progress; `started` is reset so the
         # reported elapsed time is execution time, not queue time
@@ -122,10 +133,16 @@ class BatchRun:
         with _RUN_LOCK:
             self.queued = False
             self.started = time.time()
-            self._execute(params_for, save_fn)
+            self._execute(params_for, save_fn, preload_fn)
 
-    def _execute(self, params_for, save_fn) -> None:
+    def _execute(self, params_for, save_fn, preload_fn=None) -> None:
         os.makedirs(self.out_dir, exist_ok=True)
+        loader = None
+        if preload_fn is not None and len(self.paths) > 1:
+            loader = threading.Thread(target=self._preload_loop,
+                                      args=(params_for, preload_fn),
+                                      daemon=True)
+            loader.start()
         for path in self.paths:
             if self.cancelled:
                 break
@@ -133,7 +150,9 @@ class BatchRun:
             entry = {"path": path, "name": self.current, "ok": False}
             try:
                 params = params_for(path)
-                out_path = save_fn(path, params)
+                with self._preload_lock:
+                    pre = self._preload.pop(path, None)
+                out_path = save_fn(path, params, pre)
                 entry.update(ok=True, out=out_path)
                 with self._lock:
                     self.done += 1
@@ -143,8 +162,27 @@ class BatchRun:
                     self.failed += 1
                     self.done += 1
             self.results.append(entry)
+        if loader is not None:
+            loader.join(timeout=5)
         self.finished = time.time()
         self.current = ""
+
+    def _preload_loop(self, params_for, preload_fn) -> None:
+        """提前解码后续图片（跳过第一张——它已被主线程处理）。"""
+        for i, path in enumerate(self.paths[1:], 1):
+            if self.cancelled:
+                return
+            with self._preload_lock:
+                if len(self._preload) >= self._PRELOAD_MAX:
+                    return
+            try:
+                decoded = preload_fn(path)
+            except Exception:
+                continue            # 解码失败留给 save_fn 原路径报错
+            with self._preload_lock:
+                if self.cancelled or len(self._preload) >= self._PRELOAD_MAX:
+                    return
+                self._preload[path] = decoded
 
 
 _RUNS: Dict[str, BatchRun] = {}
@@ -164,14 +202,14 @@ _RUN_LOCK = threading.Lock()
 
 
 def start(paths: Sequence[str], out_dir: str, recipe_label: str,
-          draft_edge: int, params_for, save_fn) -> BatchRun:
+          draft_edge: int, params_for, save_fn, preload_fn=None) -> BatchRun:
     rid = uuid.uuid4().hex[:12]
     run = BatchRun(rid, paths, out_dir, recipe_label, draft_edge)
     _RUNS[rid] = run
     _ORDER.append(rid)
     while len(_ORDER) > _MAX_RUNS:
         _RUNS.pop(_ORDER.pop(0), None)
-    t = threading.Thread(target=run.run, args=(params_for, save_fn),
+    t = threading.Thread(target=run.run, args=(params_for, save_fn, preload_fn),
                          daemon=True, name="batch-" + rid)
     t.start()
     return run

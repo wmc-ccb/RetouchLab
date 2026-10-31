@@ -7590,6 +7590,40 @@ $('btnCull').onclick = () => selectCat('挑图');
 $('btnUndo').onclick = doUndo;
 $('btnRedo').onclick = doRedo;
 $('btnAuto').onclick = autoFix;
+// 超清覆盖式进度条：画布正中显示百分比+块数，完成/失败即撤
+function upscaleOverlay(show, pct, sub) {
+  let el = document.getElementById('upscaleProg');
+  if (show && !el) {
+    el = document.createElement('div');
+    el.id = 'upscaleProg';
+    el.style.cssText =
+      'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);' +
+      'background:rgba(10,10,12,.88);border:1px solid var(--line);' +
+      'border-radius:10px;padding:18px 26px;z-index:20;text-align:center;' +
+      'min-width:300px';
+    el.innerHTML =
+      '<div style="font-size:13px;color:var(--gold);margin-bottom:10px">' +
+      '超清 4× 处理中…</div>' +
+      '<div style="height:8px;background:var(--panel3);border-radius:4px;' +
+      'overflow:hidden"><div id="upBar" style="height:100%;width:0;' +
+      'background:var(--gold);transition:width .4s"></div></div>' +
+      '<div id="upSub" style="font-size:11px;color:var(--dim);margin-top:8px">' +
+      '</div>';
+    const wrap = document.getElementById('canvasWrap');
+    wrap.style.position = 'relative';
+    wrap.appendChild(el);
+  } else if (!show && el) {
+    el.remove();
+    return;
+  }
+  if (el && pct !== undefined) {
+    const bar = el.querySelector('#upBar');
+    if (bar) bar.style.width = pct + '%';
+    const subEl = el.querySelector('#upSub');
+    if (subEl && sub) subEl.textContent = sub;
+  }
+}
+
 $('btnUpscale').onclick = async () => {
   if (!S.session) return;
   const path = prompt('超清结果保存到（完整路径）：',
@@ -7606,16 +7640,16 @@ $('btnUpscale').onclick = async () => {
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.statusText);
     const jobId = j.job;
-    let last = 0;
+    let last = -1;
     while (true) {
-      await new Promise(res => setTimeout(res, 1200));
+      await new Promise(res => setTimeout(res, 1000));
       const st = await fetch('/api/upscale/job/' + jobId)
         .then(x => x.json());
       if (st.phase === 'error') throw new Error(st.error || '任务失败');
       if (st.pct !== last) {
         last = st.pct;
-        log('超清进度：' + st.pct + '%（' + st.done + '/' + st.total +
-            ' 块）');
+        upscaleOverlay(true, st.pct,
+          st.done + ' / ' + st.total + ' 块 · ' + st.pct + '%');
       }
       if (st.phase === 'done') {
         log('超清 4× 完成：' + st.width + '×' + st.height + ' · ' +
@@ -7624,7 +7658,7 @@ $('btnUpscale').onclick = async () => {
       }
     }
   } catch (e) { log('超清失败：' + e.message); }
-  finally { setBusy(false); }
+  finally { setBusy(false); upscaleOverlay(false); }
 };
 $('btnHeal').onclick = () => setBrush('heal');
 $('btnStamp').onclick = () => setBrush('clone');

@@ -778,3 +778,37 @@ RAW 链路、妆容/表情/头发 API 全部已有。真正仍缺的只有：
   （一行 cv2.GaussianBlur，未做，避免同时改变两档行为）。
 - FLUX.1 Fill dev 许可为非商业（FLUX Community License），与项目
   非商业立场一致；商用需向 BFL 授权。
+
+
+### 一二档性能/体验冲刺（2026-10-31）
+
+**一档（小活）**：
+- genfill 贴回羽化：mask 高斯羽化（px = max(2, w/180)），硬边剪贴画消失，
+  已软的笔刷边几乎不变；SD1.5/FLUX 两档同时受益。
+- lama 初始化锁：与 cliponnx 同款 _LOCK 防双初始化（整个ORT会话创建
+  收进锁内——首版只锁了路径检查，创建段留在外面，复审修正）。
+- 超清真进度条：画布覆盖式 overlay（百分比+块数），替代日志文字。
+
+**二档**：
+- **增量渲染第一阶（人脸检测缓存）**：Face 对象只依赖源图、与参数
+  无关 → pipeline.run 加 `faces` 入参跳过整段检测；/api/render 按
+  源图版本（render_ver，_commit 递增）缓存续存。实测色调拖动
+  2421ms → ~300ms（8×），回拖走渲染缓存 7ms。**全程不做两阶段
+  大重构**——那要拆 450 行线性 run()，风险大于收益；detect 缓存
+  覆盖了最常见的色调拖动场景。剩余大头是 skin/geometry 阶段
+  （~900ms），若要再快需做真正的阶段级缓存，列为后续。
+- **批量预解码**：batch 引擎加可选 preload_fn——loader 线程提前
+  解码下一张（RAW 解码是批处理最重一步）与当前推理重叠，缓存只留
+  1 张（24MB×N 会吃内存）；服务端 save_fn 接受 pre 注入跳过重复
+  load_image。实测 2 张 jpg 批处理 done。
+- **FLUX 调优**：UNETLoader weight_dtype → fp8_e4m3fn_fast（fp8 文件
+  + fast 算子）；T5 支持 fp8 变体优先（fetch_flux 后续可下
+  t5xxl_fp8_e4m3fn 省 4.6GB）。
+- **服务端更新检查**：维持前端方案（Mimosa 拦服务端出站 HTTP）；
+  自动更新闭环被 GitHub 2GB 资产上限挡住（发行包 6.5GB 没法单文件
+  挂 Release）——除非启用 NAS 自托管分发，暂缓。
+
+**验证**：simplecat/cattree/ui/newpanels/hotkeys/walkthrough/
+release_features/hist_persistent/history/histogram/locality/
+skin_gate/eyes/formula/hands_beach 全绿；超清 overlay/批量预解码/
+增量渲染提速实测。

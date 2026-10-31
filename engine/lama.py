@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from .paths import models_dir
 import os
+import threading
 from typing import Optional, Tuple
 
 import numpy as np
@@ -39,6 +40,7 @@ import cv2
 _SESSION = None
 _SESSION_PATH = None
 _INPUT = None
+_LOCK = threading.Lock()   # 防并发双初始化（ORT run 本身线程安全）
 
 
 def model_path() -> str:
@@ -51,34 +53,36 @@ def available() -> bool:
 
 def _session():
     global _SESSION, _SESSION_PATH, _INPUT
-    path = model_path()
-    if _SESSION is not None and _SESSION_PATH == path:
+    with _LOCK:
+        path = model_path()
+        if _SESSION is not None and _SESSION_PATH == path:
+            return _SESSION, _INPUT
+        if not os.path.exists(path):
+            raise FileNotFoundError("LaMa model not found: " + path)
+
+        import onnxruntime as ort
+
+        from .matting import _prepare_gpu_dlls
+        _prepare_gpu_dlls()
+        providers = []
+        if "CUDAExecutionProvider" in ort.get_available_providers():
+            providers.append("CUDAExecutionProvider")
+        providers.append("CPUExecutionProvider")
+        so = ort.SessionOptions()
+        so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        sess = ort.InferenceSession(path, sess_options=so,
+                                    providers=providers)
+
+        # read the interface rather than assuming it: the exported signature varies
+        # between conversions (4-channel RGB+mask vs separate inputs, fixed vs
+        # dynamic size)
+        ins = sess.get_inputs()
+        spec = {"names": [i.name for i in ins],
+                "shapes": [list(i.shape) for i in ins],
+                "types": [i.type for i in ins],
+                "outputs": [o.name for o in sess.get_outputs()]}
+        _SESSION, _SESSION_PATH, _INPUT = sess, path, spec
         return _SESSION, _INPUT
-    if not os.path.exists(path):
-        raise FileNotFoundError("LaMa model not found: " + path)
-
-    import onnxruntime as ort
-
-    from .matting import _prepare_gpu_dlls
-    _prepare_gpu_dlls()
-    providers = []
-    if "CUDAExecutionProvider" in ort.get_available_providers():
-        providers.append("CUDAExecutionProvider")
-    providers.append("CPUExecutionProvider")
-    so = ort.SessionOptions()
-    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    sess = ort.InferenceSession(path, sess_options=so, providers=providers)
-
-    # read the interface rather than assuming it: the exported signature varies
-    # between conversions (4-channel RGB+mask vs separate inputs, fixed vs
-    # dynamic size)
-    ins = sess.get_inputs()
-    spec = {"names": [i.name for i in ins],
-            "shapes": [list(i.shape) for i in ins],
-            "types": [i.type for i in ins],
-            "outputs": [o.name for o in sess.get_outputs()]}
-    _SESSION, _SESSION_PATH, _INPUT = sess, path, spec
-    return _SESSION, _INPUT
 
 
 def info() -> dict:

@@ -54,6 +54,7 @@ CONTROLNET = "control_v11p_sd15_inpaint_fp16.safetensors"
 FLUX_UNET = "flux1-fill-dev.safetensors"
 FLUX_CLIP1 = "clip_l.safetensors"
 FLUX_CLIP2 = "t5xxl_fp16.safetensors"
+FLUX_CLIP2_FP8 = "t5xxl_fp8_e4m3fn.safetensors"   # 小 4.6GB, 质量几乎无损
 FLUX_VAE = "ae.safetensors"
 
 
@@ -162,13 +163,14 @@ def _build_graph(img_ref: str, mask_ref: str, prompt: str, negative: str,
     if model == "flux":
         if flux_missing():
             raise ValueError("FLUX 模型未就绪: " + ", ".join(flux_missing()))
+        # fp8_e4m3fn_fast：fp8 量化文件 + fast 算子，10GB 显存下明显提速
         return {
             "1": {"class_type": "LoadImage", "inputs": {"image": img_ref}},
             "2": {"class_type": "LoadImageMask",
                   "inputs": {"image": mask_ref, "channel": "red"}},
             "3": {"class_type": "UNETLoader",
                   "inputs": {"unet_name": FLUX_UNET,
-                             "weight_dtype": "default"}},
+                             "weight_dtype": "fp8_e4m3fn_fast"}},
             "4": {"class_type": "DualCLIPLoader",
                   "inputs": {"clip_name1": FLUX_CLIP1,
                              "clip_name2": FLUX_CLIP2,
@@ -346,7 +348,12 @@ def fill(img: np.ndarray, mask: np.ndarray,
     if gen.shape[:2] != (h, w):
         gen = cv2.resize(gen, (w, h), interpolation=cv2.INTER_LANCZOS4)
 
-    a = np.clip(mask, 0.0, 1.0)[..., None]
+    # 贴回羽化：手涂/矩形的 mask 是硬边（0/1 二值），直接按 a 混合会
+    # 贴出一圈"剪贴画"硬边。给 mask 加一次与画面尺寸成比例的高斯羽化，
+    # 二值边变成几像素的软过渡；本身已软的笔刷边几乎不受影响。
+    feather_px = max(2.0, w / 180.0)
+    a = np.clip(cv2.GaussianBlur(np.clip(mask, 0.0, 1.0),
+                                 (0, 0), feather_px), 0.0, 1.0)[..., None]
     out = img.astype(np.float32) * (1.0 - a) + gen.astype(np.float32) * a
     info = {"seed": seed, "steps": steps, "cfg": cfg, "denoise": denoise,
             "model": model, "work_scale": round(scale, 3),

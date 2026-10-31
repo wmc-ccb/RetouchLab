@@ -354,11 +354,15 @@ class RetouchPipeline:
 
     # ------------------------------------------------------------------
     def run(self, img: np.ndarray, params: dict = None,
-            detect: bool = True, progress=None) -> tuple:
+            detect: bool = True, progress=None,
+            faces: Optional[List[Face]] = None) -> tuple:
         """Retouch `img` (float32 RGB in [0,1]).
 
         Returns (result, info) where info carries the detected faces and the
         stage timings, so a caller can report what actually ran.
+
+        `faces`：调用方缓存的 Face 对象列表（只依赖源图、与参数无关）。
+        传入时跳过整段检测；info 会带 "_faces_obj" 供调用方续存缓存。
         """
         import time
         p = self.normalize(params)
@@ -382,10 +386,22 @@ class RetouchPipeline:
         # precision than a 1600px one, and running the 106-point model at full
         # resolution dominated the whole pipeline (measured: 2.4 s of a 10 s
         # run on a 1600px preview). Boxes scale back to the working image.
+        #
+        # `faces` 入参（缓存路径）：人脸只依赖源图、与参数无关。调用方
+        # （/api/render）按"源图版本"缓存 Face 对象列表传回来，拖色调
+        # 滑杆时整段检测（304ms@1400px）直接跳过。
+        faces_provided = faces
         faces: List[Face] = []
-        det = self.detector() if detect else None
+        det = self.detector() if detect and faces_provided is None else None
         detect_scale = 1.0
-        if det is not None:
+        if faces_provided is not None:
+            faces = faces_provided
+            info["faces"] = [
+                {"box": [round(v, 1) for v in f.box], "score": round(f.score, 3),
+                 "dense": f.has_dense()}
+                for f in faces
+            ]
+        elif det is not None:
             def _detect():
                 nonlocal detect_scale
                 hh, ww = work.shape[:2]
@@ -416,6 +432,7 @@ class RetouchPipeline:
                 for f in faces
             ]
             info["detect_scale"] = round(detect_scale, 3)
+            info["_faces_obj"] = faces   # 调用方续存缓存（内部对象，勿序列化）
 
         # ---- geometry ----------------------------------------------------
         geo_keys = ["slimFace", "jaw", "cheekbone", "enlargeEye", "eyeHeight",
