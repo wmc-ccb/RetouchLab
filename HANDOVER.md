@@ -756,3 +756,25 @@ RAW 链路、妆容/表情/头发 API 全部已有。真正仍缺的只有：
 - 妆容贴图素材库（需素材资产，立场冲突）
 - FLUX 真机实测（11GB 模型未下载）
 - macOS / mini CPU 版 / 自动更新闭环（路线图大件）
+
+
+### FLUX.1 Fill 接入实测（2026-10-31，用户要求"接进去试试"）
+
+模型 4 件套从 **hf-mirror.com** 下载成功（直连 huggingface.co 在本机不通；
+官方 Fill 仓库是 gated 需要 HF 账号）：
+- 主模型用 **fp8 量化版**（dim/..._fp8 单文件仓库，免门禁，12B ≈ 11.8GB，
+  标准 UNETLoader default 加载，质量损失极小，且比 fp16 更适配 10GB 显存）
+- clip_l (235MB) / t5xxl_fp16 (9.3GB) / ae (320MB)
+
+`tools/fetch_flux.py`：status/download 两模式，curl -L -C - 断点续传，
+实测全程 ~25 分钟（hf-mirror ~13MB/s）。**fp8 实测通过产品 /api/gen
+全链路**：真照片 + 中央矩形 mask + "red vintage car on a country road"
+→ 生成 photorealistic 车辆场景、mask 外零改动（目检输出图 +
+数值对比）。速度在 10GB 显存 + --lowvram 条件下可接受。
+
+**残留注意**：
+- genfill 复合用的是 mask 自身软边——手涂硬边 mask 的贴回边缘是硬的
+  （SD1.5 档同样），想要软边可以在 genfill 复合前对 mask 加高斯羽化
+  （一行 cv2.GaussianBlur，未做，避免同时改变两档行为）。
+- FLUX.1 Fill dev 许可为非商业（FLUX Community License），与项目
+  非商业立场一致；商用需向 BFL 授权。
