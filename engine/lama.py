@@ -258,7 +258,8 @@ def fill(img: np.ndarray, mask: np.ndarray, dilate: int = 4,
         "windows": total,
         "model": "lama",
         "fixed_input": [win, win],
-        "touched": touched,
+        # 覆盖率比率（0-1）——info 会直通 JSON 响应，不能放 ndarray
+        "touched": round(float(touched.mean()), 4),
     }
 
 

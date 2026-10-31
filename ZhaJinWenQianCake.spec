@@ -39,7 +39,10 @@ excludes = [
     # **matplotlib 不能排除**：mediapipe.tasks.python.vision 的 import
     # 链无条件经过 drawing_styles → matplotlib，排掉它打包版的
     # 语义分割（automask/换天空分割）全部崩（暴力测试抓到的发行 bug）
-    "pandas", "IPython", "jupyter", "notebook",
+    # numba/llvmlite(115MB)/torchvision/torchaudio：全库无 import，
+    # 纯属 torch/skimage 依赖链带入（瘦身轮移除，压测后验证无回归）
+    "pandas", "IPython", "jupyter", "notebook", "numba", "llvmlite",
+    "torchvision", "torchaudio",
     "pytest", "pydoc_data", "tkinter", "test",
     "PyQt5", "PyQt6", "PySide2", "PySide6",
     # torch 里只给训练/导出用的子模块

@@ -73,7 +73,10 @@ def model_dir() -> str:
 
 
 def model_path() -> str:
-    return os.path.join(models_dir(), MODEL_NAME)
+    # 加载器（transformers from_pretrained）读的是 **目录版** 权重
+    # faceparsing/model.safetensors；根目录的同名独立副本是历史冗余，
+    # 已从发行包移除（省 323MB）。
+    return os.path.join(model_dir(), "model.safetensors")
 
 
 def available() -> bool:

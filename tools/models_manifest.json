@@ -14,7 +14,7 @@
    "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
   },
   {
-   "path": "faceparsing.safetensors",
+   "path": "faceparsing/model.safetensors",
    "size": 338580732,
    "sha256": "c2bec795a8c243db71bd95be538fd62559003566466c71237e45c99b920f4b62"
   },
